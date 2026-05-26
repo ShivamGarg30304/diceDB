@@ -1,28 +1,47 @@
 package server
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/shivam30303/diceDB/config"
+	"github.com/shivam30303/diceDB/core"
 )
 
-func readCommand(c net.Conn) (string, error) {
-	buf := make([]byte, 512)
+func readCommand(c net.Conn) (*core.RedisCmd, error) {
+	// TODO: Max read in one shot is 512 bytes
+	// To allow input > 512 bytes, then repeated read until
+	// we get EOF or designated delimiter
+	var buf []byte = make([]byte, 512)
 	n, err := c.Read(buf[:])
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return string(buf[:n]), nil
+
+	tokens, err := core.DecodeArrayString(buf[:n])
+	if err != nil {
+		return nil, err
+	}
+
+	return &core.RedisCmd{
+		Cmd:  strings.ToUpper(tokens[0]),
+		Args: tokens[1:],
+	}, nil
 }
 
-func respond(c net.Conn, cmd string) error {
-	if _, err := c.Write([]byte(cmd)); err != nil {
-		return err
+func respondError(err error, c net.Conn) {
+	c.Write([]byte(fmt.Sprintf("-%s\r\n", err)))
+}
+
+func respond(cmd *core.RedisCmd, c net.Conn) {
+	err := core.EvalAndRespond(cmd, c)
+	if err != nil {
+		respondError(err, c)
 	}
-	return nil
 }
 
 func RunSyncTCPServer() {
@@ -37,15 +56,18 @@ func RunSyncTCPServer() {
 	}
 
 	for {
+		// blocking call: waiting for the new client to connect
 		c, err := lsnr.Accept()
 		if err != nil {
 			panic(err)
 		}
 
+		// increment the number of concurrent clients
 		con_clients += 1
 		log.Println("client connected with address:", c.RemoteAddr(), "concurrent clients", con_clients)
 
 		for {
+			// over the socket, continuously read the command and print it out
 			cmd, err := readCommand(c)
 			if err != nil {
 				c.Close()
@@ -56,10 +78,7 @@ func RunSyncTCPServer() {
 				}
 				log.Println("err", err)
 			}
-			log.Println("command", cmd)
-			if err = respond(c, cmd); err != nil {
-				log.Print("err write:", err)
-			}
+			respond(cmd, c)
 		}
 	}
 }
