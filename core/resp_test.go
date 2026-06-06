@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/shivam30303/diceDB/core"
+	"github.com/dicedb/dice/core"
 )
 
 func TestSimpleStringDecode(t *testing.T) {
