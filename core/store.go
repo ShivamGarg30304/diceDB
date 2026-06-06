@@ -6,12 +6,12 @@ import (
 	"github.com/shivam30303/diceDB/config"
 )
 
+var store map[string]*Obj
+
 type Obj struct {
 	Value     interface{}
 	ExpiresAt int64
 }
-
-var store map[string]*Obj
 
 func init() {
 	store = make(map[string]*Obj)
@@ -37,7 +37,14 @@ func Put(k string, obj *Obj) {
 }
 
 func Get(k string) *Obj {
-	return store[k]
+	v := store[k]
+	if v != nil {
+		if v.ExpiresAt != -1 && v.ExpiresAt <= time.Now().UnixMilli() {
+			delete(store, k)
+			return nil
+		}
+	}
+	return v
 }
 
 func Del(k string) bool {
