@@ -1,6 +1,10 @@
 package core
 
-import "time"
+import (
+	"time"
+
+	"github.com/shivam30303/diceDB/config"
+)
 
 type Obj struct {
 	Value     interface{}
@@ -26,6 +30,9 @@ func NewObj(value interface{}, durationMs int64) *Obj {
 }
 
 func Put(k string, obj *Obj) {
+	if len(store) >= config.KeysLimit {
+		evict()
+	}
 	store[k] = obj
 }
 
