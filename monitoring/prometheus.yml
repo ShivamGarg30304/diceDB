@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # redis_exporter is started in single-target mode (-redis.addr),
+  # so scraping its /metrics directly yields the DiceDB keyspace metrics.
+  - job_name: redis_exporter
+    static_configs:
+      - targets: ['localhost:9121']
+
+  # (optional) the exporter's own process metrics
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

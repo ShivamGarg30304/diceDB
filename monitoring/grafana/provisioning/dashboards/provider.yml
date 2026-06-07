@@ -1,0 +1,9 @@
+apiVersion: 1
+providers:
+  - name: DiceDB
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    options:
+      path: /Users/shivam.garg/Code/Learning/DiceMe/monitoring/grafana/dashboards
+      foldersFromFilesStructure: false
