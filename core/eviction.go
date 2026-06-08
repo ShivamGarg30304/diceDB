@@ -1,6 +1,10 @@
 package core
 
-import "github.com/shivam30303/diceDB/config"
+import (
+	"time"
+
+	"github.com/shivam30303/diceDB/config"
+)
 
 // Evicts the first key it found while iterating the map
 // TODO: Make it efficient by doing thorough sampling
@@ -26,6 +30,46 @@ func evictAllkeysRandom() {
 	}
 }
 
+/*
+ *  The approximated LRU algorithm
+ */
+func getCurrentClock() uint32 {
+	return uint32(time.Now().Unix()) & 0x00FFFFFF
+}
+
+func getIdleTime(lastAccessedAt uint32) uint32 {
+	c := getCurrentClock()
+	if c >= lastAccessedAt {
+		return c - lastAccessedAt
+	}
+	return (0x00FFFFFF - lastAccessedAt) + c
+}
+
+func populateEvictionPool() {
+	sampleSize := 5
+	for k := range store {
+		ePool.Push(k, store[k].LastAccessedAt)
+		sampleSize--
+		if sampleSize == 0 {
+			break
+		}
+	}
+}
+
+// TODO: no need to populate everytime. should populate
+// only when the number of keys to evict is less than what we have in the pool
+func evictAllkeysLRU() {
+	populateEvictionPool()
+	evictCount := int16(config.EvictionRatio * float64(config.KeysLimit))
+	for i := 0; i < int(evictCount) && len(ePool.pool) > 0; i++ {
+		item := ePool.Pop()
+		if item == nil {
+			return
+		}
+		Del(item.key)
+	}
+}
+
 // TODO: Make the eviction strategy configuration driven
 // TODO: Support multiple eviction strategies
 func evict() {
@@ -34,5 +78,7 @@ func evict() {
 		evictFirst()
 	case "allkeys-random":
 		evictAllkeysRandom()
+	case "allkeys-lru":
+		evictAllkeysLRU()
 	}
 }

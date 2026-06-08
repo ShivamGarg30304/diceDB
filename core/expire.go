@@ -1,24 +1,35 @@
 package core
 
 import (
-	"log"
 	"time"
 )
+
+func hasExpired(obj *Obj) bool {
+	exp, ok := expires[obj]
+	if !ok {
+		return false
+	}
+	return exp <= uint64(time.Now().UnixMilli())
+}
+
+func getExpiry(obj *Obj) (uint64, bool) {
+	exp, ok := expires[obj]
+	return exp, ok
+}
 
 // TODO: Optimize
 //   - Sampling
 //   - Unnecessary iteration
-func expireSample() float64 {
+func expireSample() float32 {
 	var limit int = 20
 	var expiredCount int = 0
 
+	// assuming iteration of golang hash table in randomized
 	for key, obj := range store {
-		if obj.ExpiresAt != -1 {
-			limit--
-			if obj.ExpiresAt <= time.Now().Unix() {
-				delete(store, key)
-				expiredCount++
-			}
+		limit--
+		if hasExpired(obj) {
+			Del(key)
+			expiredCount++
 		}
 
 		// once we iterated to 20 keys that have some expiration set
@@ -27,7 +38,8 @@ func expireSample() float64 {
 			break
 		}
 	}
-	return float64(expiredCount) / float64(limit)
+
+	return float32(expiredCount) / float32(20.0)
 }
 
 // Deletes all the expired keys - the active way
@@ -41,5 +53,4 @@ func DeleteExpiredKeys() {
 			break
 		}
 	}
-	log.Println("deleted the expired but undeleted keys. total keys", len(store))
 }
