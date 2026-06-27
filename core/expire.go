@@ -2,6 +2,8 @@ package core
 
 import (
 	"time"
+
+	"github.com/shivam30303/diceDB/config"
 )
 
 func hasExpired(obj *Obj) bool {
@@ -21,25 +23,26 @@ func getExpiry(obj *Obj) (uint64, bool) {
 //   - Sampling
 //   - Unnecessary iteration
 func expireSample() float32 {
-	var limit int = 20
+	var limit int = config.KeysLimit
 	var expiredCount int = 0
+	var sampledCount int = 0
 
-	// assuming iteration of golang hash table in randomized
 	for key, obj := range store {
 		limit--
+		sampledCount++
 		if hasExpired(obj) {
 			Del(key)
 			expiredCount++
 		}
-
-		// once we iterated to 20 keys that have some expiration set
-		// we break the loop
 		if limit == 0 {
 			break
 		}
 	}
 
-	return float32(expiredCount) / float32(20.0)
+	if sampledCount == 0 {
+		return 0
+	}
+	return float32(expiredCount) / float32(sampledCount)
 }
 
 // Deletes all the expired keys - the active way

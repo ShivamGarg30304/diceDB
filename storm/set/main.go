@@ -25,6 +25,7 @@ func stormSet(wg *sync.WaitGroup) {
 		panic(err)
 	}
 
+	defer conn.Close()
 	for {
 		time.Sleep(500 * time.Millisecond)
 		k, v := getRandomKeyValue()
@@ -43,7 +44,6 @@ func stormSet(wg *sync.WaitGroup) {
 			panic(err)
 		}
 	}
-	conn.Close()
 }
 
 func main() {

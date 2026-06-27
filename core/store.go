@@ -34,12 +34,16 @@ func Put(k string, obj *Obj) {
 	if len(store) >= config.KeysLimit {
 		evict()
 	}
+	_, exists := store[k]
+
 	obj.LastAccessedAt = getCurrentClock()
 	store[k] = obj
 	if KeyspaceStat[0] == nil {
 		KeyspaceStat[0] = make(map[string]int)
 	}
-	KeyspaceStat[0]["keys"]++
+	if !exists {
+		KeyspaceStat[0]["keys"]++
+	}
 }
 
 func Get(k string) *Obj {
@@ -49,8 +53,9 @@ func Get(k string) *Obj {
 			Del(k)
 			return nil
 		}
+		v.LastAccessedAt = getCurrentClock()
 	}
-	v.LastAccessedAt = getCurrentClock()
+
 	return v
 }
 
