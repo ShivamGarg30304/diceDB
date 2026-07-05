@@ -228,6 +228,21 @@ func evalSLEEP(args []string) []byte {
 	return RESP_OK
 }
 
+func evalEXISTS(args []string) []byte {
+	if len(args) == 0 {
+		return Encode(errors.New("ERR wrong number of arguments for 'exists' command"), false)
+	}
+
+	var count int = 0
+
+	for _, key := range args {
+		if Get(key) != nil {
+			count++
+		}
+	}
+	return Encode(count, false)
+}
+
 func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
 	var response []byte
 	buf := bytes.NewBuffer(response)
@@ -260,6 +275,8 @@ func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
 			buf.Write(evalLRU(cmd.Args))
 		case "SLEEP":
 			buf.Write(evalSLEEP(cmd.Args))
+		case "EXISTS":
+			buf.Write(evalEXISTS(cmd.Args))
 		default:
 			buf.Write(evalPING(cmd.Args))
 		}
