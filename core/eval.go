@@ -269,6 +269,26 @@ func evalKEYS(args []string) []byte {
 	return Encode(keys, false)
 }
 
+func evalTYPE(args []string) []byte {
+	if len(args) != 1 {
+		return Encode(errors.New("ERR wrong number of arguments for 'type' command"), false)
+	}
+
+	key := args[0]
+	obj := Get(key)
+	if obj == nil {
+		return Encode("none", true)
+	}
+
+	objType := getType(obj.TypeEncoding)
+	switch objType {
+	case OBJ_TYPE_STRING:
+		return Encode("string", true)
+	default:
+		return Encode("unknown", true)
+	}
+}
+
 func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
 	var response []byte
 	buf := bytes.NewBuffer(response)
@@ -305,6 +325,8 @@ func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
 			buf.Write(evalEXISTS(cmd.Args))
 		case "KEYS":
 			buf.Write(evalKEYS(cmd.Args))
+		case "TYPE":
+			buf.Write(evalTYPE(cmd.Args))
 		default:
 			buf.Write(evalPING(cmd.Args))
 		}

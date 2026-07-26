@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dicedb/dice/core"
+	"github.com/shivam30303/diceDB/core"
 )
 
 func TestSimpleStringDecode(t *testing.T) {
@@ -12,8 +12,8 @@ func TestSimpleStringDecode(t *testing.T) {
 		"+OK\r\n": "OK",
 	}
 	for k, v := range cases {
-		value, _ := core.Decode([]byte(k))
-		if v != value {
+		values, _ := core.Decode([]byte(k))
+		if len(values) == 0 || v != values[0] {
 			t.Fail()
 		}
 	}
@@ -24,8 +24,8 @@ func TestError(t *testing.T) {
 		"-Error message\r\n": "Error message",
 	}
 	for k, v := range cases {
-		value, _ := core.Decode([]byte(k))
-		if v != value {
+		values, _ := core.Decode([]byte(k))
+		if len(values) == 0 || v != values[0] {
 			t.Fail()
 		}
 	}
@@ -37,8 +37,8 @@ func TestInt64(t *testing.T) {
 		":1000\r\n": 1000,
 	}
 	for k, v := range cases {
-		value, _ := core.Decode([]byte(k))
-		if v != value {
+		values, _ := core.Decode([]byte(k))
+		if len(values) == 0 || v != values[0] {
 			t.Fail()
 		}
 	}
@@ -50,8 +50,8 @@ func TestBulkStringDecode(t *testing.T) {
 		"$0\r\n\r\n":      "",
 	}
 	for k, v := range cases {
-		value, _ := core.Decode([]byte(k))
-		if v != value {
+		values, _ := core.Decode([]byte(k))
+		if len(values) == 0 || v != values[0] {
 			t.Fail()
 		}
 	}
@@ -66,8 +66,12 @@ func TestArrayDecode(t *testing.T) {
 		"*2\r\n*3\r\n:1\r\n:2\r\n:3\r\n*2\r\n+Hello\r\n-World\r\n": {[]int64{int64(1), int64(2), int64(3)}, []interface{}{"Hello", "World"}},
 	}
 	for k, v := range cases {
-		value, _ := core.Decode([]byte(k))
-		array := value.([]interface{})
+		values, _ := core.Decode([]byte(k))
+		if len(values) == 0 {
+			t.Fail()
+			continue
+		}
+		array := values[0].([]interface{})
 		if len(array) != len(v) {
 			t.Fail()
 		}
