@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"strconv"
 	"time"
 )
@@ -243,6 +244,31 @@ func evalEXISTS(args []string) []byte {
 	return Encode(count, false)
 }
 
+func evalKEYS(args []string) []byte {
+	if len(args) != 1 {
+		return Encode(errors.New("ERR wrong number of arguments for 'keys' command"), false)
+	}
+
+	pattern := args[0]
+	var keys []string
+
+	for k, obj := range store {
+		if hasExpired(obj) {
+			continue
+		}
+
+		matched, err := path.Match(pattern, k)
+		if err != nil {
+			return Encode(errors.New("ERR invalid pattern"), false)
+		}
+		if matched {
+			keys = append(keys, k)
+		}
+	}
+
+	return Encode(keys, false)
+}
+
 func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
 	var response []byte
 	buf := bytes.NewBuffer(response)
@@ -277,6 +303,8 @@ func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
 			buf.Write(evalSLEEP(cmd.Args))
 		case "EXISTS":
 			buf.Write(evalEXISTS(cmd.Args))
+		case "KEYS":
+			buf.Write(evalKEYS(cmd.Args))
 		default:
 			buf.Write(evalPING(cmd.Args))
 		}
