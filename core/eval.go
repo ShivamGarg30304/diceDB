@@ -289,6 +289,29 @@ func evalTYPE(args []string) []byte {
 	}
 }
 
+func evalRENAME(args []string) []byte {
+	if len(args) != 2 {
+		return Encode(errors.New("ERR wrong number of arguments for 'rename' command"), false)
+	}
+
+	oldKey := args[0]
+	newKey := args[1]
+
+	oldObj := store[oldKey]
+	if oldObj == nil || hasExpired(oldObj) {
+		return Encode(errors.New("ERR no such key"), false)
+	}
+
+	if oldKey == newKey {
+		return RESP_OK
+	}
+
+	Put(newKey, oldObj)
+	Del(oldKey)
+
+	return RESP_OK
+}
+
 func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
 	var response []byte
 	buf := bytes.NewBuffer(response)
@@ -327,6 +350,8 @@ func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
 			buf.Write(evalKEYS(cmd.Args))
 		case "TYPE":
 			buf.Write(evalTYPE(cmd.Args))
+		case "RENAME":
+			buf.Write(evalRENAME(cmd.Args))
 		default:
 			buf.Write(evalPING(cmd.Args))
 		}
