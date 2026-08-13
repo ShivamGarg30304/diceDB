@@ -2,35 +2,36 @@ package core
 
 import (
 	"time"
-
-	"github.com/shivam30303/diceDB/config"
 )
 
-func hasExpired(obj *Obj) bool {
-	exp, ok := expires[obj]
+const expireSampleSize int = 20
+
+func hasExpired(k string) bool {
+	exp, ok := expires[k]
 	if !ok {
 		return false
 	}
 	return exp <= uint64(time.Now().UnixMilli())
 }
 
-func getExpiry(obj *Obj) (uint64, bool) {
-	exp, ok := expires[obj]
+func removeExpiry(k string) {
+	delete(expires, k)
+}
+
+func getExpiry(k string) (uint64, bool) {
+	exp, ok := expires[k]
 	return exp, ok
 }
 
-// TODO: Optimize
-//   - Sampling
-//   - Unnecessary iteration
 func expireSample() float32 {
-	var limit int = config.KeysLimit
+	var limit int = expireSampleSize
 	var expiredCount int = 0
 	var sampledCount int = 0
 
-	for key, obj := range store {
+	for key := range expires {
 		limit--
 		sampledCount++
-		if hasExpired(obj) {
+		if hasExpired(key) {
 			Del(key)
 			expiredCount++
 		}

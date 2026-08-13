@@ -7,27 +7,23 @@ import (
 )
 
 var store map[string]*Obj
-var expires map[*Obj]uint64
+var expires map[string]uint64
 
 func init() {
 	store = make(map[string]*Obj)
-	expires = make(map[*Obj]uint64)
+	expires = make(map[string]uint64)
 }
 
-func setExpiry(obj *Obj, expDurationMs int64) {
-	expires[obj] = uint64(time.Now().UnixMilli()) + uint64(expDurationMs)
+func setExpiry(k string, expDurationMs int64) {
+	expires[k] = uint64(time.Now().UnixMilli()) + uint64(expDurationMs)
 }
 
-func NewObj(value interface{}, expDurationMs int64, oType uint8, oEnc uint8) *Obj {
-	obj := &Obj{
+func NewObj(value interface{}, oType uint8, oEnc uint8) *Obj {
+	return &Obj{
 		Value:          value,
 		TypeEncoding:   oType | oEnc,
 		LastAccessedAt: getCurrentClock(),
 	}
-	if expDurationMs > 0 {
-		setExpiry(obj, expDurationMs)
-	}
-	return obj
 }
 
 func Put(k string, obj *Obj) {
@@ -38,6 +34,10 @@ func Put(k string, obj *Obj) {
 
 	obj.LastAccessedAt = getCurrentClock()
 	store[k] = obj
+
+	// overwriting a key drops any timeout it carried, matching SET semantics
+	delete(expires, k)
+
 	if KeyspaceStat[0] == nil {
 		KeyspaceStat[0] = make(map[string]int)
 	}
@@ -49,7 +49,7 @@ func Put(k string, obj *Obj) {
 func Get(k string) *Obj {
 	v := store[k]
 	if v != nil {
-		if hasExpired(v) {
+		if hasExpired(k) {
 			Del(k)
 			return nil
 		}
@@ -62,8 +62,20 @@ func Get(k string) *Obj {
 func Del(k string) bool {
 	if _, ok := store[k]; ok {
 		delete(store, k)
+		delete(expires, k)
 		KeyspaceStat[0]["keys"]--
 		return true
 	}
 	return false
+}
+
+func Rename(oldKey, newKey string) {
+	obj := store[oldKey]
+	exp, hasExp := expires[oldKey]
+
+	Put(newKey, obj)
+	if hasExp {
+		expires[newKey] = exp
+	}
+	Del(oldKey)
 }

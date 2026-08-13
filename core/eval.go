@@ -63,7 +63,11 @@ func evalSET(args []string) []byte {
 	}
 
 	// putting the k and value in a Hash Table
-	Put(key, NewObj(value, exDurationMs, oType, oEnc))
+	obj := NewObj(value, oType, oEnc)
+	Put(key, obj)
+	if exDurationMs > 0 {
+		setExpiry(key, exDurationMs)
+	}
 	return RESP_OK
 }
 
@@ -83,7 +87,7 @@ func evalGET(args []string) []byte {
 	}
 
 	// if key already expired then return nil
-	if hasExpired(obj) {
+	if hasExpired(key) {
 		return RESP_NIL
 	}
 
@@ -106,7 +110,7 @@ func evalTTL(args []string) []byte {
 	}
 
 	// if object exist, but no expiration is set on it then send -1
-	exp, isExpirySet := getExpiry(obj)
+	exp, isExpirySet := getExpiry(key)
 	if !isExpirySet {
 		return RESP_MINUS_1
 	}
@@ -154,7 +158,7 @@ func evalEXPIRE(args []string) []byte {
 		return RESP_ZERO
 	}
 
-	setExpiry(obj, exDurationSec*1000)
+	setExpiry(key, exDurationSec*1000)
 
 	// 1 if the timeout was set.
 	return RESP_ONE
@@ -174,7 +178,7 @@ func evalINCR(args []string) []byte {
 	var key string = args[0]
 	obj := Get(key)
 	if obj == nil {
-		obj = NewObj("0", -1, OBJ_TYPE_STRING, OBJ_ENCODING_INT)
+		obj = NewObj("0", OBJ_TYPE_STRING, OBJ_ENCODING_INT)
 		Put(key, obj)
 	}
 
@@ -198,7 +202,7 @@ func evalINFO(args []string) []byte {
 	buf := bytes.NewBuffer(info)
 	buf.WriteString("# Keyspace\r\n")
 	for i := range KeyspaceStat {
-		buf.WriteString(fmt.Sprintf("db%d:keys=%d,expires=0,avg_ttl=0\r\n", i, KeyspaceStat[i]["keys"]))
+		buf.WriteString(fmt.Sprintf("db%d:keys=%d,expires=%d,avg_ttl=0\r\n", i, KeyspaceStat[i]["keys"], len(expires)))
 	}
 	return Encode(buf.String(), false)
 }
@@ -252,8 +256,8 @@ func evalKEYS(args []string) []byte {
 	pattern := args[0]
 	var keys []string
 
-	for k, obj := range store {
-		if hasExpired(obj) {
+	for k := range store {
+		if hasExpired(k) {
 			continue
 		}
 
@@ -298,7 +302,7 @@ func evalRENAME(args []string) []byte {
 	newKey := args[1]
 
 	oldObj := store[oldKey]
-	if oldObj == nil || hasExpired(oldObj) {
+	if oldObj == nil || hasExpired(oldKey) {
 		return Encode(errors.New("ERR no such key"), false)
 	}
 
@@ -306,10 +310,26 @@ func evalRENAME(args []string) []byte {
 		return RESP_OK
 	}
 
-	Put(newKey, oldObj)
-	Del(oldKey)
+	Rename(oldKey, newKey)
 
 	return RESP_OK
+}
+
+func evalPERSIST(args []string) []byte {
+	if len(args) != 1 {
+		return Encode(errors.New("ERR wrong number of arguments for 'persist' command"), false)
+	}
+
+	key := args[0]
+
+	obj := store[key]
+	if obj == nil || hasExpired(key) {
+		return RESP_ZERO
+	}
+
+	removeExpiry(key)
+
+	return RESP_ONE
 }
 
 func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
@@ -352,6 +372,8 @@ func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
 			buf.Write(evalTYPE(cmd.Args))
 		case "RENAME":
 			buf.Write(evalRENAME(cmd.Args))
+		case "PERSIST":
+			buf.Write(evalPERSIST(cmd.Args))
 		default:
 			buf.Write(evalPING(cmd.Args))
 		}

@@ -10,7 +10,7 @@ import (
 // TODO: Make it efficient by doing thorough sampling
 func evictFirst() {
 	for k := range store {
-		delete(store, k)
+		Del(k)
 		return
 	}
 }
