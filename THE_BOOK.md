@@ -116,7 +116,7 @@ STAGE 10  Production hardening                  2 wk    Part V ch.28-30        �
 
 ## Time budget
 
-Hours are **focused working hours**, not elapsed time. At ~10 h/week the total lands near **4.5 months**. At ~20 h/week, just over 2. The ratios matter more than the absolutes — if replication takes 3× the estimate, that's normal; if Phase 0 does, something is wrong with your setup and you should ask.
+Hours are **focused working hours**, not elapsed time. At ~25 h/week the total lands near **4.5 months**; at ~10 h/week, closer to **11**. The ratios matter more than the absolutes — if replication takes 3× the estimate, that's normal; if Phase 0 does, something is wrong with your setup and you should ask.
 
 | Part / Chapter | Read | Build | Total | Notes |
 |---|---|---|---|---|
@@ -139,7 +139,7 @@ Hours are **focused working hours**, not elapsed time. At ~10 h/week the total l
 | 14 Threading model | 2 h | — | 2 h | §14.4 decides your whole architecture — read in week one |
 | **PART III — ARCHITECTURE** | 4 h | — | **4 h** | re-read after Stage 7 |
 | **PART IV — SOURCE READING** | | | **30 h** | spread across stages, never in one block |
-| **PART V — IMPLEMENTATION** | | | **~350 h** | |
+| **PART V — IMPLEMENTATION** | | | **≈370 h** | |
 | 17 Setup + diff harness | 1 h | 4 h | 5 h | |
 | 18 Phase 0 server core | — | **25 h** | 25 h | |
 | 19 Phase 1 strings + expiry | — | **35 h** | 35 h | |
@@ -156,14 +156,14 @@ Hours are **focused working hours**, not elapsed time. At ~10 h/week the total l
 | 30 Debugging | 2 h | — | 2 h | read before Stage 7; re-read when stuck |
 | **PART VI — APPENDICES** | ref | — | — | lookup only |
 | | | | | |
-| **TOTAL** | ~55 h | ~370 h | **≈425 h** | ≈4 months at 25 h/wk, ≈10 months at 10 h/wk |
+| **TOTAL** | ≈80 h | ≈375 h | **≈455 h** | ≈4.5 months at 25 h/wk, ≈11 months at 10 h/wk |
 
 **Where the time actually goes:**
 
-- **Replication + Cluster are 110 h** — 26% of the project, and the two subsystems almost every "build Redis" tutorial skips entirely. They are also what interviewers actually ask about.
+- **Replication + Cluster are 110 h** — a quarter of the project, and the two subsystems almost every "build Redis" tutorial skips entirely. They are also what interviewers actually ask about.
 - **Persistence is 45 h** and *harder in Go than in C*, because you cannot `fork()`. Snapshot-while-serving without copy-on-write is the most original engineering problem in this project (§9.5).
-- The data-structure libraries (45 h) are the computer-science third; everything after Stage 4 is systems engineering.
-- Reading is ~13% of total time. This is a building project, not a studying project.
+- The data-structure libraries (45 h) are the computer-science core; everything after Stage 4 is systems engineering.
+- Reading is under a fifth of total time — and a third of *that* is reading the real Redis source, not prose. This is a building project, not a studying project.
 
 ## Checkpoint demos
 
@@ -487,7 +487,7 @@ TCP is a stream. One `read()` may deliver half a command, exactly one, or three 
 
 Your Phase 0 fix list for `core/resp.go`:
 
-1. Every `readX` gets a "not enough data" return path; no indexing past `len(data)`, ever. Fuzz it (§18.6).
+1. Every `readX` gets a "not enough data" return path; no indexing past `len(data)`, ever. Fuzz it (§18.2).
 2. `readLength` handles `-1` (null bulk/array) and rejects garbage.
 3. Enforce limits mid-parse: element count (>1M → `-ERR Protocol error: invalid multibulk length`), bulk length (> `proto-max-bulk-len`, default 512 MB), total buffer growth.
 4. On protocol error: send the error, then **close the connection**. A desynced stream has no findable next-command boundary.
@@ -1707,7 +1707,9 @@ Hooks are declared now, no-ops until Phases 3–6 fill them: **the choke point i
 
 Strings: `SET` (full matrix: NX XX GET EX PX EXAT PXAT KEEPTTL — mutual-exclusion errors included), the deprecated-but-everywhere legacy spellings `SETNX`/`SETEX`/`PSETEX`/`GETSET` (all four are one-liners over setGenericCommand once SET's matrix exists — that's the lesson), `GET`, `GETDEL`, `GETEX`, `APPEND` (forces raw!), `STRLEN`, `SETRANGE`/`GETRANGE`, `INCR`/`DECR`/`INCRBY`/`DECRBY` (overflow: `ERR increment or decrement would overflow`), `INCRBYFLOAT` (formatting: no trailing zeros — diff against real; and remember §9.4, it propagates as SET later), `MSET`/`MGET`/`MSETNX`.
 
-Keys: `DEL`, `UNLINK` (alias for now — GC is lazy-free), `EXISTS` (with repeats — `EXISTS k k k` counts 3), `TYPE`, `RENAME`/`RENAMENX` (as a store-level swap, fixing audit #13; TTL travels; `no such key` error), `KEYS` (your own glob: `* ? [abc] \x` — port `stringmatchlen`, ~40 lines, audit #14), `SCAN` (with MATCH/COUNT/TYPE — cursor contract §5.3; with Go maps use the keys-snapshot trick temporarily, honest cursor arrives with the dict), `RANDOMKEY`, `TTL`/`PTTL` (rounding!), `EXPIRE`/`PEXPIRE`/`EXPIREAT`/`PEXPIREAT` (+ NX XX GT LT; past→delete, audit #7), `PERSIST`, `DBSIZE`, `FLUSHDB`/`FLUSHALL`, `OBJECT ENCODING|IDLETIME|FREQ|HELP`, `SELECT` (0 only), `DEBUG OBJECT|SLEEP|SET-ACTIVE-EXPIRE`.
+Also `LCS` (7.0: longest common subsequence of two string keys, with `LEN`/`IDX`/`MINMATCHLEN`/`WITHMATCHLEN`) — optional, but instructive: it is plain dynamic programming at **O(N×M) time _and_ memory**, so on two 1 MB strings it allocates a terabyte-scale matrix and real Redis simply refuses past a limit. Building it teaches the §1.2 lesson from the inside — the server hands you a sharp tool, documents the complexity, and trusts you.
+
+Keys: `DEL`, `UNLINK` (alias for now — GC is lazy-free), `EXISTS` (with repeats — `EXISTS k k k` counts 3), `TYPE`, `TOUCH`, `COPY` (with `DB`/`REPLACE`; must deep-copy the value, and *not* the TTL unless asked), `RENAME`/`RENAMENX` (as a store-level swap, fixing audit #13; TTL travels; `no such key` error), `KEYS` (your own glob: `* ? [abc] \x` — port `stringmatchlen`, ~40 lines, audit #14), `SCAN` (with MATCH/COUNT/TYPE — cursor contract §5.3; with Go maps use the keys-snapshot trick temporarily, honest cursor arrives with the dict), `RANDOMKEY`, `TTL`/`PTTL` (rounding!), `EXPIRE`/`PEXPIRE`/`EXPIREAT`/`PEXPIREAT` (+ NX XX GT LT; past→delete, audit #7), `PERSIST`, `DBSIZE`, `FLUSHDB`/`FLUSHALL`, `OBJECT ENCODING|IDLETIME|FREQ|HELP`, `SELECT` (0 only), `DEBUG OBJECT|SLEEP|SET-ACTIVE-EXPIRE`.
 
 Server: `COMMAND` (basic: count + names), `CONFIG GET/SET` (registry-backed; glob patterns), `INFO` (server, clients, memory-approx, stats, keyspace sections — real section format), `CLIENT SETNAME|GETNAME|LIST|ID`, `HELLO` (RESP2 announce only).
 
@@ -1956,7 +1958,7 @@ go test ./core/evict/... # pool property tests
 2. **REPLICAOF + full sync**: replica-side state machine (connect → handshake → receive RDB via §22.3-powered BGSAVE on master → flush → load → stream). Master-side: `syncCommand`, per-replica during-save queue.
 3. **Steady state**: feed replicas from propagation; replica applies via fake-client (+`CLIENT_MASTER` flag: no reply, no re-propagation... except onward to *its* sub-replicas — verbatim forwarding, §10.1); ACK every second; `INFO replication` both sides.
 4. **Partial resync**: replid/replid2 + backlog window gates → `+CONTINUE`; the offset bookkeeping *will* be wrong the first four times; the byte-level log-merge (ch. 30) is how you find it.
-5. **WAIT**, `min-replicas-to-write`, replica-read-only (`-READONLY You can't write against a read only replica.`), expiry rule enforcement (§7.4 — the replica branch of expireIfNeeded finally goes live), replica eviction off.
+5. **WAIT**, `ROLE` (returns `master`/`slave` plus offsets and the peer list — the pre-INFO way clients discover topology, and three lines once the state exists), `min-replicas-to-write`, replica-read-only (`-READONLY You can't write against a read only replica.`), expiry rule enforcement (§7.4 — the replica branch of expireIfNeeded finally goes live), replica eviction off.
 6. **Chaos**: the drill matrix below.
 
 ## 24.2 Design notes
@@ -2267,7 +2269,8 @@ Server: `COMMAND(COUNT) CONFIG(GET|SET|RESETSTAT) INFO TIME CLIENT(ID|GETNAME|SE
 Lists: `LPUSH RPUSH LPUSHX RPUSHX LPOP RPOP LMPOP LLEN LRANGE LINDEX LSET LINSERT LREM LTRIM LMOVE RPOPLPUSH LPOS`
 Hashes: `HSET HSETNX HGET HMGET HGETALL HDEL HLEN HEXISTS HKEYS HVALS HINCRBY HINCRBYFLOAT HSTRLEN HRANDFIELD HSCAN`
 Sets: `SADD SREM SISMEMBER SMISMEMBER SMEMBERS SCARD SPOP SRANDMEMBER SMOVE SINTER SINTERCARD SUNION SDIFF SINTERSTORE SUNIONSTORE SDIFFSTORE SSCAN`
-ZSets: `ZADD ZREM ZSCORE ZMSCORE ZCARD ZINCRBY ZRANK ZREVRANK ZRANGE ZRANGESTORE ZRANGEBYSCORE ZREVRANGEBYSCORE ZRANGEBYLEX ZCOUNT ZLEXCOUNT ZPOPMIN ZPOPMAX ZMPOP ZRANDMEMBER ZREMRANGEBYRANK ZREMRANGEBYSCORE ZREMRANGEBYLEX ZSCAN` · optional: `SORT SORT_RO ZUNIONSTORE ZINTERSTORE ZDIFFSTORE`
+ZSets: `ZADD ZREM ZSCORE ZMSCORE ZCARD ZINCRBY ZRANK ZREVRANK ZRANGE ZRANGESTORE ZRANGEBYSCORE ZREVRANGEBYSCORE ZRANGEBYLEX ZREVRANGEBYLEX ZCOUNT ZLEXCOUNT ZPOPMIN ZPOPMAX ZMPOP ZRANDMEMBER ZREMRANGEBYRANK ZREMRANGEBYSCORE ZREMRANGEBYLEX ZSCAN` · optional: `LCS SORT SORT_RO ZUNION ZINTER ZDIFF ZUNIONSTORE ZINTERSTORE ZDIFFSTORE ZINTERCARD`
+Deprecated aliases clients still send (each is a one-liner over the modern form — add them or your diff harness fails on real client libraries): `HMSET` (=HSET), `BRPOPLPUSH` (=BLMOVE RIGHT LEFT), `RPOPLPUSH` (=LMOVE RIGHT LEFT), `SETNX`/`SETEX`/`PSETEX`/`GETSET`, `SUBSTR` (=GETRANGE), `ZRANGEBYSCORE`-family (=ZRANGE forms)
 
 ### Phase 3
 `SAVE BGSAVE BGREWRITEAOF LASTSAVE SHUTDOWN(NOSAVE|SAVE)` · `CONFIG SET appendfsync|save|appendonly` · `-LOADING` behavior · `DEBUG RELOAD`
@@ -2276,7 +2279,7 @@ ZSets: `ZADD ZREM ZSCORE ZMSCORE ZCARD ZINCRBY ZRANK ZREVRANK ZRANGE ZRANGESTORE
 `CONFIG SET maxmemory|maxmemory-policy|maxmemory-samples` · `-OOM` on writes under noeviction · `OBJECT FREQ` real under lfu · `INFO stats: evicted_keys` · `MEMORY USAGE` (approx) · `DEBUG RECOUNT-MEMORY` (yours)
 
 ### Phase 5
-`REPLICAOF/SLAVEOF(host port|NO ONE) PSYNC REPLCONF(listening-port|capa|ACK|GETACK) WAIT` · `-READONLY` · `INFO replication` complete both roles · `DEBUG DIGEST` (yours)
+`REPLICAOF/SLAVEOF(host port|NO ONE) PSYNC REPLCONF(listening-port|capa|ACK|GETACK) WAIT ROLE` · `-READONLY` · `INFO replication` complete both roles · `DEBUG DIGEST` (yours)
 
 ### Phase 6
 `MULTI EXEC DISCARD WATCH UNWATCH RESET` · `BLPOP BRPOP BLMOVE BLMPOP BZPOPMIN BZPOPMAX BZMPOP WAIT` · `SUBSCRIBE UNSUBSCRIBE PSUBSCRIBE PUNSUBSCRIBE PUBLISH PUBSUB(CHANNELS|NUMSUB|NUMPAT)` · `CONFIG SET notify-keyspace-events`
@@ -2285,7 +2288,7 @@ ZSets: `ZADD ZREM ZSCORE ZMSCORE ZCARD ZINCRBY ZRANK ZREVRANK ZRANGE ZRANGESTORE
 `CLUSTER(MYID|INFO|SHARDS|SLOTS|KEYSLOT|MEET|FORGET|RESET|BUMPEPOCH|SETSLOT|GETKEYSINSLOT|COUNTKEYSINSLOT|NODES|REPLICATE|FAILOVER)` · `MIGRATE DUMP RESTORE ASKING READONLY READWRITE` · `-MOVED -ASK -CROSSSLOT -TRYAGAIN` · stretch: `SSUBSCRIBE SUNSUBSCRIBE SPUBLISH PUBSUB(SHARDCHANNELS|SHARDNUMSUB)`
 
 ### Phase 8 (menu-dependent)
-`GEOADD GEOPOS GEODIST GEOHASH GEOSEARCH GEOSEARCHSTORE` · `XADD XRANGE XREVRANGE XLEN XREAD XTRIM XDEL XSETID XGROUP XREADGROUP XACK XPENDING XCLAIM XAUTOCLAIM XINFO` · `HEXPIRE HPEXPIRE HEXPIREAT HPEXPIREAT HTTL HPTTL HPERSIST HGETEX HGETDEL` · `SORT SORT_RO` · `EVAL EVALSHA SCRIPT(LOAD|EXISTS|FLUSH|KILL) FUNCTION(LOAD|LIST|CALL|DELETE)` · `HELLO 3` + push · `CLIENT(TRACKING|KILL|PAUSE|UNPAUSE|NO-EVICT|NO-TOUCH)` · `AUTH ACL(...)` · `SLOWLOG(GET|LEN|RESET) LATENCY(HISTORY|RESET|LATEST)` · `SETBIT GETBIT BITCOUNT BITOP BITPOS BITFIELD BITFIELD_RO` · `PFADD PFCOUNT PFMERGE` · `WAITAOF FAILOVER` · `TIME MOVE SWAPDB LOLWUT OBJECT(REFCOUNT) MEMORY(USAGE|STATS|DOCTOR)` · `SENTINEL(...)` in dice-sentinel
+`GEOADD GEOPOS GEODIST GEOHASH GEOSEARCH GEOSEARCHSTORE` · `XADD XRANGE XREVRANGE XLEN XREAD XTRIM XDEL XSETID XGROUP XREADGROUP XACK XPENDING XCLAIM XAUTOCLAIM XINFO` · `HEXPIRE HPEXPIRE HEXPIREAT HPEXPIREAT HTTL HPTTL HEXPIRETIME HPEXPIRETIME HPERSIST HGETEX HGETDEL` · `SORT SORT_RO LCS` · `EVAL EVAL_RO EVALSHA EVALSHA_RO SCRIPT(LOAD|EXISTS|FLUSH|KILL) FUNCTION(LOAD|LIST|DUMP|DELETE|STATS) FCALL FCALL_RO` · `HELLO 3` + push · `CLIENT(TRACKING|KILL|PAUSE|UNPAUSE|NO-EVICT|NO-TOUCH)` · `AUTH ACL(...)` · `SLOWLOG(GET|LEN|RESET) LATENCY(HISTORY|RESET|LATEST)` · `SETBIT GETBIT BITCOUNT BITOP BITPOS BITFIELD BITFIELD_RO` · `PFADD PFCOUNT PFMERGE` · `WAITAOF FAILOVER` · `TIME MOVE SWAPDB LOLWUT OBJECT(REFCOUNT) MEMORY(USAGE|STATS|DOCTOR)` · `SENTINEL(...)` in dice-sentinel
 
 ---
 
