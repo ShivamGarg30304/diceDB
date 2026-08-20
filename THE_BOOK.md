@@ -648,7 +648,7 @@ Ziplist (`ziplist.c`) is the deprecated ancestor — same idea, but entries enco
 
 ## 5.5 quicklist
 
-A **quicklist** is the production list: a doubly-linked list *of listpacks*, each node holding up to `list-max-listpack-size` entries (default 128 / 8 KB). Ends stay unpacked-ish for fast push/pop; middle nodes can be LZF-compressed (`list-compress-depth`) since list access concentrates at the ends. You get: O(1) amortized push/pop at both ends, bounded memmove costs (one node, not the whole list), decent memory.
+A **quicklist** is the production list: a doubly-linked list *of listpacks*, each node bounded by `list-max-listpack-size` — which defaults to `-2`, meaning **8 KB per node** rather than a fixed entry count (§6.2). Ends stay unpacked-ish for fast push/pop; middle nodes can be LZF-compressed (`list-compress-depth`) since list access concentrates at the ends. You get: O(1) amortized push/pop at both ends, bounded memmove costs (one node, not the whole list), decent memory.
 
 Build: a plain doubly-linked list of your listpacks, split-on-overflow, merge-on-underflow (adjacent nodes both < half-full). Skip compression (or add LZF in Phase 8).
 
@@ -733,10 +733,17 @@ Your `Obj{TypeEncoding uint8, LastAccessedAt uint32, Value interface{}}` is this
 | Type | Small encoding | Threshold (config, defaults) | Large encoding |
 |---|---|---|---|
 | string | `int` (is an integer), `embstr` (≤44 B, one allocation) | — | `raw` |
-| list | `listpack` | `list-max-listpack-size` 128 | `quicklist` |
-| hash | `listpack` (field,value,field,value…) | `hash-max-listpack-entries` 128, `-value` 64 B | `hashtable` (dict) |
-| set | `intset` (all ints) → `listpack` | `set-max-intset-entries` 512, `set-max-listpack-entries` 128 | `hashtable` (dict) |
+| list | `listpack` | `list-max-listpack-size` **-2** | `quicklist` |
+| hash | `listpack` (field,value,field,value…) | `hash-max-listpack-entries` **512**, `-value` 64 B | `hashtable` (dict) |
+| set | `intset` (all ints) → `listpack` | `set-max-intset-entries` 512, `set-max-listpack-entries` 128, `-value` 64 B | `hashtable` (dict) |
 | zset | `listpack` (member,score…) | `zset-max-listpack-entries` 128, `-value` 64 B | `skiplist` + dict |
+
+Two of those defaults deserve a second look, because they're the ones people misquote (including older editions of this table):
+
+- **`list-max-listpack-size` is `-2`, not a count.** Negative values select a *size* limit per quicklist node rather than an entry count: -1 = 4 KB, **-2 = 8 KB** (the default), -3 = 16 KB, -4 = 32 KB, -5 = 64 KB. A positive value means "N entries per node." So a list converts to quicklist not at a fixed length but when the packed bytes stop fitting in 8 KB — which is the more honest limit, since what actually hurts is the `memmove`, and that scales with bytes.
+- **`hash-max-listpack-entries` is 512**, not 128 like the others. Hashes get a bigger allowance because a listpack hash stores field and value adjacently, so lookups have good locality and the linear scan stays cheap further out than it does for a set or zset.
+
+Always check the running server rather than trusting a table — `CONFIG GET *-max-*` on your reference `redis-server` is the ground truth, and your Phase 2 tests should read the thresholds from config rather than hardcoding them.
 
 Conversion rules: **one-way** (never convert back down when items are removed — avoiding thrash beats reclaiming bytes), triggered on the *insert or growth* that crosses either the entry-count or the value-length threshold. `OBJECT ENCODING key` exposes the current encoding — it's how your tests prove conversions happen at exactly the configured boundary (a Phase 2 done-when).
 
@@ -1293,7 +1300,7 @@ Cluster wrinkle: plain `PUBLISH` must broadcast to **every node** in the cluster
 > |---|---|---|
 > | **[CORE]** | `bio.c` — all of it (~350 lines): the job queue Redis trusts with fsync | 45 min |
 > | **[CORE]** | `lazyfree.c`: `lazyfreeGetFreeEffort` + the UNLINK path | 30 min |
-> | **[OPT]** | `networking.c`: the io-threads section (`handleClientsWithPendingReadsUsingThreads`) | 30 min |
+> | **[OPT]** | `iothread.c` — the 8.x io-threads rewrite (per-thread event loops, client handoff queues, prefetch). §14.3 explains how it differs from the 6.0 batch-and-barrier design most articles describe. | 30 min |
 
 ## 14.1 The truth table
 
@@ -1314,7 +1321,15 @@ The design rule extractable from all four rows: **threads never share mutable da
 
 ## 14.3 io-threads
 
-With `io-threads 4`, the loop batches pending-read clients, wakes threads to read+parse them in parallel, waits, then executes all parsed commands serially on the main thread; symmetrically for writes. Execution stays single-threaded — the speedup is protocol I/O only (worth it when replies are large or clients many). This is fan-out/fan-in with a barrier, not concurrency. Phase 8 stretch in Go: your connection goroutines *already are* io-threads (parsing happens off-engine, in parallel, by construction) — observe that you got 6.0's headline feature for free from the architecture, and say so in the README.
+Two generations of this feature exist, and knowing both is the point.
+
+**Redis 6.0–7.x (the classic design, and the one most writing describes).** With `io-threads 4`, the main loop collects the clients with pending reads, wakes the threads to read+parse them in parallel, **waits on a barrier**, then executes every parsed command serially on the main thread; symmetrically for writes. Execution stays single-threaded — the speedup is protocol I/O only, and it pays off when replies are large or clients are many. Fan-out/fan-in with a barrier, not concurrency.
+
+**Redis 8.x (this tree).** The implementation moved out of `networking.c` into its own `iothread.c` and changed shape: each io thread now runs **its own event loop** and owns a set of *assigned* clients (`assignClientToIOThread`), rather than the main thread borrowing threads for a batch. Clients are handed back and forth across explicit queues — `enqueuePendingClientsToMainThread` / `enqueuePendingClienstToIOThreads` (the typo is in the source), each direction guarded by a per-thread mutex and an `eventNotifier`. Commands that must not run off-thread are detected by `isClientMustHandledByMainThread` and pinned. There is even command **prefetching** (`prefetchIOThreadCommands`) so the io thread warms the keys' cache lines before the main thread executes.
+
+The invariant survives both generations, and it's the one to keep: **command execution is still serial on the main thread.** What changed is only who does the socket and parsing work, and how ownership is handed over — which is exactly the §14.1 rule (threads receive ownership through a queue; they never share mutable structures) applied harder.
+
+Phase 8 stretch in Go: your connection goroutines *already are* io-threads (parsing happens off-engine, in parallel, by construction) — you got the whole feature for free from the architecture. Say so in the README, and if you want the 8.x lesson too, add the prefetch idea: the connection goroutine can look up the command's keys and touch them before handing the command to the engine.
 
 ## 14.4 Choosing DiceMe's concurrency model — the decision record
 
@@ -1766,7 +1781,7 @@ Tests: model = sorted slice; property-test all ops; span-consistency invariant c
 
 ## 20.5 `ds/quicklist` (~6 h)
 
-Doubly-linked nodes wrapping your listpack; fill limit from config (count 128 or size 8KB per node); split/merge; API mirrors list commands' needs: PushHead/Tail, PopHead/Tail, `InsertBefore/After(pivot)`, `Index(n)`, `Range(from,to)`, `RemoveRange`, iterator with cursor stability across node boundaries.
+Doubly-linked nodes wrapping your listpack; fill limit from config — implement **both** senses of `list-max-listpack-size` (positive = entry count, negative = the -1…-5 size ladder, default -2 = 8 KB), since real Redis's default is the size one; split/merge; API mirrors list commands' needs: PushHead/Tail, PopHead/Tail, `InsertBefore/After(pivot)`, `Index(n)`, `Range(from,to)`, `RemoveRange`, iterator with cursor stability across node boundaries.
 Tests: model-diff vs `[]string`; node-count sanity under interleaved push/pop (no leak of empty nodes); merge threshold behavior.
 
 ## 20.6 Done-when
@@ -2326,7 +2341,7 @@ All in `~/Code/Learning/redis/src` @ `d22066d09`. Search by function name.
 | AOF rewrite + manifest | `aof.c:rewriteAppendOnlyFileBackground` + file-header comment |
 | AOF load | `aof.c:loadSingleAppendOnlyFile` (fake client) |
 | bg threads | `bio.c` (whole file); `lazyfree.c` |
-| io-threads | `networking.c:handleClientsWithPendingReadsUsingThreads` |
+| io-threads (8.x) | `iothread.c:assignClientToIOThread`, `enqueuePendingClientsToMainThread`, `isClientMustHandledByMainThread`, `prefetchIOThreadCommands` (6.0–7.x lived in `networking.c` as a batch+barrier — see §14.3) |
 | repl master side | `replication.c:syncCommand`, `masterTryPartialResynchronization`, `replicationFeedSlaves`, `feedReplicationBuffer` |
 | repl replica side | `replication.c:syncWithMaster`, `readSyncBulkPayload`, `replicationCron` |
 | WAIT | `replication.c:waitCommand` |
