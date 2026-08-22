@@ -301,6 +301,8 @@ Why this system is shaped the way it is, and the one architectural decision you 
 > | **[CORE]** | "Latency Numbers Every Programmer Should Know" — `gist.github.com/jboner/2841832` | 10 min |
 > | **[OPT]** | The `MANIFESTO` file at the redis repo root — antirez's design values; 10 minutes that explain fifty decisions | 10 min |
 > | **[OPT]** | antirez, "Redis persistence demystified" — `antirez.com` (2012, mental model unchanged) | 30 min |
+> | **[OPT]** | **Atikoglu et al., "Workload Analysis of a Large-Scale Key-Value Store"** (SIGMETRICS 2012) — Facebook's memcached traces. The paper that tells you what real cache workloads actually look like: tiny values, enormous read skew, short TTLs. Every design choice in this book is answering this workload. `www.cs.cmu.edu/~dga/papers/memcachier-sigmetrics2012.pdf` | 1 h |
+> | **[OPT]** | **Nishtala et al., "Scaling Memcache at Facebook"** (NSDI 2013) — the canonical operations paper for in-memory caching at scale; read it for the failure modes you'll meet in ch. 38. `usenix.org/system/files/conference/nsdi13/nsdi13-final170_update.pdf` | 1 h |
 
 ## 1.1 The one bet
 
@@ -466,6 +468,8 @@ Everything between the socket and the command table. You finish this part with a
 > | **[CORE]** | `ae.c` + `ae.h` — the whole thing; the cleanest event loop you'll ever read. Entry: `aeMain`, `aeProcessEvents`. | 1 h |
 > | **[CORE]** | `ae_kqueue.c` — you wrote one of these (`server/async_tcp.go`); compare choices line by line | 20 min |
 > | **[USE]** | "The C10K problem", Dan Kegel — `kegel.com/c10k.html`; the document that named the design space | 30 min |
+> | **[OPT]** | **RFC 896** (Nagle, 1984) and **RFC 1122 §4.2.3.4** — why `TCP_NODELAY` exists and what the 40 ms you'd otherwise pay actually is. Two pages of the original. `rfc-editor.org/rfc/rfc896` | 20 min |
+> | **[OPT]** | Welsh, Culler, Brewer, **"SEDA: An Architecture for Well-Conditioned, Scalable Internet Services"** (SOSP 2001) — the staged/event-driven design space Redis sits in, argued properly. Useful contrast for §2.4. `sosp.org/2001/papers/welsh.pdf` | 1 h |
 > | **[OPT]** | Any good "how the Go netpoller works" writeup — you build on one of these whether you like it or not | 45 min |
 
 ## 3.1 The problem the event loop solves
@@ -914,6 +918,7 @@ Redis has `databases 16` (`SELECT n`) — a legacy feature; Cluster only allows 
 > | **[CORE]** | `expire.c`: top-of-file comment + `activeExpireCycle` (the modern one walks ebuckets; read the *algorithm description* in the comment, which still describes the classic sampling contract) | 45 min |
 > | **[CORE]** | `db.c:expireIfNeeded` — the lazy path and the replica rule; read the comment block above it three times | 30 min |
 > | **[USE]** | `tests/unit/expire.tcl` — expiry semantics as executable spec; plus `redis.io/commands/expire` (the "Appendix: how Redis expires keys" section is the official writeup of this chapter) | 30 min |
+> | **[OPT]** | **Yang, Yue, Rashmi, "Segcache: a memory-efficient and scalable in-memory key-value cache for small objects"** (NSDI 2021) — a cache designed *around* TTLs, with an approximate-time-indexed segment structure that expires in bulk instead of sampling. It is the argument Redis 8's `ebuckets` rewrite (§9.3) is making, done first and measured. `usenix.org/conference/nsdi21/presentation/yang-juncheng` | 1 h |
 
 ## 9.1 The contract
 
@@ -1186,6 +1191,8 @@ The computer-science core: five structures built from scratch, then the four col
 > | **[CORE]** | `sds.h` header comment + the five `sdshdr` struct variants — how far Redis goes to save 3 bytes per string | 30 min |
 > | **[USE]** | `zmalloc.c`: `zmalloc_used_memory` — how used-memory accounting actually works (a counter, not a query) | 20 min |
 > | **[OPT]** | antirez, "Redis latency spikes and the Linux kernel" + any fork/COW writeup — background for §20.2 | 40 min |
+> | **[CORE]** | **Evans, "A Scalable Concurrent malloc(3) Implementation for FreeBSD"** (BSDCan 2006) — the jemalloc paper. Redis links jemalloc *by default* precisely for the fragmentation behaviour §14.2 describes; size classes and arenas are why `used_memory_rss` diverges from `used_memory`. `people.freebsd.org/~jasone/jemalloc/bsdcan2006/jemalloc.pdf` | 1 h |
+> | **[OPT]** | Redis docs, "Diagnosing latency issues" — `redis.io/topics/latency` — the THP/fork/swap section is the practical companion to §14.4 | 30 min |
 
 ## 14.1 Why memory layout is the whole game
 
@@ -1251,6 +1258,8 @@ Go's GC scans pointers. 100M `map[string]*Obj` entries = long mark phases and la
 > | **[CORE]** | Pugh, "Skip Lists: A Probabilistic Alternative to Balanced Trees" (CACM 1990) — `epaperpress.com/sortsearch/download/skiplist.pdf`; short, readable; then `t_zset.c:zslInsert` | 1 h |
 > | **[USE]** | `quicklist.h` struct comments; `intset.c` (tiny — read it all) | 30 min |
 > | **[OPT]** | `rax.c` header comment (radix tree, used by streams) — skim for ch. 39 | 20 min |
+> | **[CORE]** | **Aumasson & Bernstein, "SipHash: a fast short-input PRF"** (INDOCRYPT 2012) — `131002.net/siphash/siphash.pdf`. Redis's dict hashes with SipHash-1-2 (`siphash.c`), not a fast non-cryptographic hash, and §15.2 explains why: without a keyed PRF an attacker picks colliding keys and turns every O(1) lookup into O(n). Hash-flooding is the one security bug a from-scratch keyspace reliably ships with. | 45 min |
+> | **[OPT]** | Fredman, Komlós, Szemerédi on universal hashing, *or* the shorter Crosby & Wallach, **"Denial of Service via Algorithmic Complexity Attacks"** (USENIX Security 2003) — the attack SipHash answers. `usenix.org/legacy/events/sec03/tech/full_papers/crosby/crosby.pdf` | 40 min |
 
 These are built as **standalone libraries with their own tests** in chapter 17, before ch. 19 wires them into commands. This chapter is the theory; ch. 17 is the spec.
 
@@ -1480,6 +1489,8 @@ Making memory survive a crash, and deciding what dies when memory runs out.
 > | **[CORE]** | `rdb.c`: `rdbSaveRio` (the writer loop) + the opcode defines in `rdb.h` | 1 h |
 > | **[CORE]** | `aof.c`: file comment (the multi-part AOF design doc), `feedAppendOnlyFile`, `flushAppendOnlyFile` | 1 h |
 > | **[USE]** | ch. 21 of this book before building; `tests/integration/aof.tcl` | 45 min |
+> | **[CORE]** | **Rosenblum & Ousterhout, "The Design and Implementation of a Log-Structured File System"** (SOSP 1991) — `web.stanford.edu/~ouster/cgi-bin/papers/lfs.pdf`. Your AOF *is* a log-structured store and `BGREWRITEAOF` *is* segment cleaning; this is where that idea is stated properly, along with the write-amplification arithmetic that decides your rewrite threshold. | 1.5 h |
+> | **[OPT]** | **O'Neil et al., "The Log-Structured Merge-Tree (LSM-Tree)"** (Acta Informatica 1996) — the road Redis did *not* take. Read the intro and §2 only, then write yourself two sentences on why an in-memory-first design doesn't want an LSM. | 45 min |
 
 ## 20.1 Two philosophies
 
@@ -1589,7 +1600,13 @@ Build the table, then make tests enforce every row (ch. 23 done-when):
 
 > **Concept · 2 h.** Short and load-bearing. Read before chapter 23, not after.
 
-Read before ch. 23. Short and load-bearing.
+> ### 📚 Read alongside — 2 h
+> | | Resource | Time |
+> |---|---|---|
+> | **[CORE]** | **Pillai et al., "All File Systems Are Not Created Equal: On the Complexity of Crafting Crash-Consistent Applications"** (OSDI 2014) — `usenix.org/system/files/conference/osdi14/osdi14-paper-pillai.pdf`. The paper behind §21.2's liturgy: which orderings and atomicity properties you may actually assume, and how they differ per filesystem. It finds these bugs in SQLite, Git and PostgreSQL, so assume they are in yours too. | 1.5 h |
+> | **[CORE]** | **Rebello et al., "Can Applications Recover from fsync Failures?"** (USENIX ATC 2020) — `usenix.org/conference/atc20/presentation/rebello`. On Linux a failed `fsync` may mark the pages clean anyway, so a *retry returns success while the data is gone* — the "fsyncgate" that bit PostgreSQL in 2018. The 1 ms cost in §21.1 is not the only thing worth knowing about fsync. | 1 h |
+> | **[OPT]** | PostgreSQL's "fsyncgate 2018" thread — `wiki.postgresql.org/wiki/Fsync_Errors`. A production database discovering the above in public. | 30 min |
+> | **[OPT]** | Dan Luu, "Files are hard" — `danluu.com/file-consistency/`. The short, readable summary of both papers above. | 20 min |
 
 ## 21.1 What fsync buys, exactly
 
@@ -1723,6 +1740,9 @@ redis-cli -p 7379 BGSAVE            # under storm: no client sees >200ms latency
 > | **[CORE]** | `evict.c`: file comment, `evictionPoolPopulate`, `performEvictions` — compare against your `core/eviction*.go` as you read | 1 h |
 > | **[CORE]** | antirez, "Random notes on improving the Redis LRU algorithm" — `antirez.com`; the sampled-LRU design writeup, with the famous scatter plots. Docs companion: `redis.io/topics/lru-cache` | 30 min |
 > | **[OPT]** | The LFU section of `evict.c`'s comment (Morris counter + decay) | 20 min |
+> | **[CORE]** | **Yang, Yue, Rashmi, "A large-scale analysis of hundreds of in-memory key-value cache clusters at Twitter"** (OSDI 2020) — `usenix.org/conference/osdi20/presentation/yang`. The best empirical answer to "does eviction policy actually matter?" Findings that will change what you build: most workloads are *not* Zipfian the way folklore says, TTL-driven expiry removes more objects than eviction does, and FIFO is often within noise of LRU. Read it before you spend a week tuning §24.3. | 1.5 h |
+> | **[OPT]** | **Megiddo & Modha, "ARC: A Self-Tuning, Low Overhead Replacement Cache"** (FAST 2003) — `usenix.org/legacy/events/fast03/tech/full_papers/megiddo/megiddo.pdf`. The classic recency+frequency policy that adapts its own balance; the thing `allkeys-lru` and `allkeys-lfu` are each half of. | 1 h |
+> | **[OPT]** | **Einziger, Friedman, Manes, "TinyLFU: A Highly Efficient Cache Admission Policy"** (2015) — `arxiv.org/abs/1512.00727`. Frequency estimation in a sketch rather than a per-object counter; the modern successor to §24.4's Morris counter, and what Caffeine/Ristretto ship. | 1 h |
 
 ## 24.1 When eviction runs
 
@@ -1845,6 +1865,9 @@ The wall. Two machines, one dataset, an asynchronous link that drops.
 > | **[CORE]** | Redis docs: "Replication" — `redis.io/topics/replication`; full read | 1 h |
 > | **[CORE]** | `replication.c`: the file comment, `syncCommand`, `masterTryPartialResynchronization`, `syncWithMaster` (the replica-side state machine — the longest function you'll read in this project) | 2.5 h |
 > | **[USE]** | `tests/integration/replication-psync.tcl` — partial-resync spec | 45 min |
+> | **[CORE]** | Kleppmann, *Designing Data-Intensive Applications*, **ch. 5 (Replication)** — read the "Problems with Replication Lag" and "leaderless" sections against what you just built. The single best framing of the trade Redis is making. | 1.5 h |
+> | **[OPT]** | **Ongaro & Ousterhout, "In Search of an Understandable Consensus Algorithm"** (USENIX ATC 2014) — `raft.github.io/raft.pdf`. Read the paper’s §5.1–5.4 *only*, and read them as the answer to "what would Redis have to give up to never lose an acknowledged write?" You have the other book for the full treatment; here it is a contrast. | 1.5 h |
+> | **[OPT]** | **DeCandia et al., "Dynamo: Amazon's Highly Available Key-Value Store"** (SOSP 2007) — `allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf`. The third answer: neither Redis's async-primary nor Raft's quorum, but sloppy quorums and reconciliation. Three designs, one problem. | 1.5 h |
 
 ## 27.1 The model
 
@@ -1900,7 +1923,7 @@ Under your engine-goroutine model: the engine owns feed + backlog; per-replica w
 
 - Master accepts `SET k 1`, acks, dies before feeding replicas. Failover promotes a replica. `k=1` is gone *after acknowledgment*. Redis's position: acceptable for its domain; use `WAIT` or use a CP system when not.
 - **Split brain**: old master isolated with clients still writing to it; failover promotes a replica; partition heals; old master is demoted and **wipes its divergent writes** (it full-resyncs from the new master, replacing its dataset — the writes made during the partition are simply destroyed). `min-replicas-to-write N` + `min-replicas-max-lag` shrinks this window (a master that can't reach N fresh replicas refuses writes) — it's a mitigation, not a proof.
-- Compare with Raft (ConsulMe ch. 24): Raft refuses the ack until a quorum has the entry. Redis takes the ack-first path deliberately: this *is* the CAP trade made concrete in two adjacent projects on your disk.
+- Compare with Raft (ConsulMe ch. 23): Raft refuses the ack until a quorum has the entry. Redis takes the ack-first path deliberately: this *is* the CAP trade made concrete in two adjacent projects on your disk.
 
 ## Self-check — Chapter 27
 
@@ -2154,6 +2177,9 @@ tests/harness/diff.sh tests/ch33_multi.txt      # queue/abort/dirty matrices vs 
 > |---|---|---|
 > | **[CORE]** | Redis docs: "Scale with Redis Cluster" (`redis.io/topics/cluster-tutorial`) + "Redis cluster specification" (`redis.io/topics/cluster-spec`) — the spec is the assignment | 2 h |
 > | **[USE]** | `cluster_legacy.c`: `clusterProcessPacket` (the gossip switchboard), `clusterHandleSlaveFailover`; `cluster.c:getNodeByQuery` (the redirect decision) | 1.5 h |
+> | **[CORE]** | **Das, Gupta, Motivala, "SWIM: Scalable Weakly-consistent Infection-style Process Group Membership Protocol"** (DSN 2002) — `cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf`. Cluster's PFAIL/FAIL gossip is SWIM's shape with different names; 6 pages, §3–4 are the protocol. If you did ConsulMe you have already built this. | 1 h |
+> | **[OPT]** | **Karger et al., "Consistent Hashing and Random Trees"** (STOC 1997) — `dl.acm.org/doi/10.1145/258533.258660`. Then answer, in writing: why does Redis Cluster use 16384 fixed slots instead? (Explicit ownership, cheap resharding, and a 2 KB bitmap that fits in a heartbeat.) | 1 h |
+> | **[OPT]** | Redis docs, "Cluster specification" §"Fault tolerance" — the epoch rules in prose, worth re-reading after §34.5 | 30 min |
 
 Cluster answers a different question than Sentinel: not "who replaces the master" but **"how do 10 masters share one keyspace"** — sharding first, HA integrated.
 
@@ -2176,7 +2202,7 @@ The server side is one function: `getNodeByQuery` — compute slot(s), verify si
 
 Node-to-node runs on a second port (client port + 10000), speaking a **binary protocol** (not RESP): fixed header (`clusterMsg`: sender id/epochs/slot bitmap/flags) + typed body. Message types: PING/PONG (gossip carriers), MEET (join), FAIL (conviction broadcast), PUBLISH (cluster-wide pub/sub), FAILOVER_AUTH_REQUEST/ACK (election votes), UPDATE (stale-config correction).
 
-Gossip: each node pings a few random peers per second (plus any peer silent > timeout/2); every PING/PONG **piggybacks a sample of the sender's view of other nodes** (address, flags, last-pong). Failure detection is ConsulMe ch. 8 vocabulary re-spelled: no pong > `cluster-node-timeout` → mark **PFAIL** (≈suspect); gossip accumulates others' PFAIL reports; majority-of-masters agreement → **FAIL** (≈dead), broadcast immediately. You built exactly this once — the ch. 36 gossip is your SWIM toy with a slot bitmap bolted on.
+Gossip: each node pings a few random peers per second (plus any peer silent > timeout/2); every PING/PONG **piggybacks a sample of the sender's view of other nodes** (address, flags, last-pong). Failure detection is ConsulMe ch. 5 vocabulary re-spelled: no pong > `cluster-node-timeout` → mark **PFAIL** (≈suspect); gossip accumulates others' PFAIL reports; majority-of-masters agreement → **FAIL** (≈dead), broadcast immediately. You built exactly this once — the ch. 36 gossip is your SWIM toy with a slot bitmap bolted on.
 
 ## 34.4 Resharding
 
@@ -2543,28 +2569,46 @@ All in `~/Code/Learning/redis/src` @ `d22066d09`. Search by function name.
 
 # Appendix D — Reading list, ranked
 
-**Tier 1 — read during the project (scheduled in chapters; URLs are the stable `redis.io/topics/<slug>` short links, which redirect to the current docs):**
-1. Redis official docs, the six phase-specs: RESP — `redis.io/topics/protocol` · Persistence — `redis.io/topics/persistence` · Replication — `redis.io/topics/replication` · Cluster spec — `redis.io/topics/cluster-spec` (+ tutorial `redis.io/topics/cluster-tutorial`) · Transactions — `redis.io/topics/transactions` · Eviction/LRU — `redis.io/topics/lru-cache` (each ~1 h, each is *the* spec for a phase)
-2. More official docs, per feature as you build it: memory optimization — `redis.io/topics/memory-optimization` · keyspace notifications — `redis.io/topics/notifications` · pub/sub — `redis.io/topics/pubsub` · streams — `redis.io/topics/streams-intro` · latency — `redis.io/topics/latency` · Sentinel — `redis.io/topics/sentinel` · security — `redis.io/topics/security` · every command's page at `redis.io/commands/<name>` (the complexity line + the RETURN section are the contract your diff harness enforces)
-3. `dict.c` dictScan comment · `aof.c` header comment · `replication.c` header comment · `hyperloglog.c` header comment — the four best in-code essays
-4. antirez (`antirez.com`): "Redis persistence demystified" · "Random notes on improving the Redis LRU algorithm" (the sampled-LRU scatter plots)
-5. Pugh 1990, "Skip Lists: A Probabilistic Alternative to Balanced Trees" — CACM 33(6); widely mirrored PDF
+Redis has less canonical literature than a consensus system does — much of its design was argued on a blog rather than at a conference, and that blog *is* the primary source. But the papers behind the individual mechanisms are real, and several will change what you build. Papers are marked **[P]**.
 
-**Tier 2 — deepeners, after the matching phase:**
-6. antirez: "Streams: a new general purpose data structure in Redis" · "Redis Sentinel and CAP" (the consistency position, stated by the author) · "Clarifications about Redis and Memcached"
-7. Flajolet, Fusy, Gandouet, Meunier 2007, "HyperLogLog: the analysis of a near-optimal cardinality estimation algorithm" — `algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf`
-8. Morris 1978, "Counting Large Numbers of Events in Small Registers" — CACM 21(10), 2 pages; the LFU counter's ancestor (overview: `en.wikipedia.org/wiki/Approximate_counting_algorithm`)
-9. Geohash & Z-order: `en.wikipedia.org/wiki/Geohash`, `en.wikipedia.org/wiki/Z-order_curve`; Morton 1966, *A Computer Oriented Geodetic Data Base and a New Technique in File Sequencing* (IBM report — the original)
-10. Karger et al. 1997, "Consistent Hashing and Random Trees" — read to answer "why does Redis Cluster use 16384 fixed slots instead of consistent hashing?" (answer: explicit ownership + cheap resharding + bitmap gossip; write your version in NOTES.md)
-11. Kleppmann, *Designing Data-Intensive Applications* ch. 15 (Replication) — after ch. 30, to place Redis's choices on the map ConsulMe already gave you (ch. 24-9 there ↔ ch. 27-12 here)
+## Tier 1 — the primary sources, scheduled inside the chapters
 
-**Tier 3 — context:**
-12. The DragonflyDB architecture docs (`github.com/dragonflydb/dragonfly/blob/main/docs`) — the §2.4 road not taken, argued well by people who took it
-13. "The C10K problem", Dan Kegel — `kegel.com/c10k.html` (historical); Beej's Guide to Network Programming — `beej.us/guide/bgnet` (if sockets ever feel fuzzy)
-14. Valkey (`github.com/valkey-io/valkey`) / KeyDB release notes — what the forks change first tells you where the pressure is
-15. Redis University (`university.redis.io`) — free courses; RU301 (operations) is a good post-Phase-8 victory lap
+1. **Redis official docs — the six specs.** Each is *the* specification for a build chapter, and each is about an hour:
+   RESP `redis.io/topics/protocol` (ch. 4) · Persistence `redis.io/topics/persistence` (ch. 20) · Replication `redis.io/topics/replication` (ch. 27) · Cluster spec `redis.io/topics/cluster-spec` (ch. 34) · Transactions `redis.io/topics/transactions` (ch. 31) · Eviction/LRU `redis.io/topics/lru-cache` (ch. 24).
+2. **Redis docs, per feature as you reach it:** memory optimization `redis.io/topics/memory-optimization` · keyspace notifications `redis.io/topics/notifications` · pub/sub `redis.io/topics/pubsub` · streams `redis.io/topics/streams-intro` · latency `redis.io/topics/latency` · Sentinel `redis.io/topics/sentinel` · security `redis.io/topics/security` · and every command page at `redis.io/commands/<name>` — the complexity line and the RETURN section are the contract your diff harness enforces.
+3. **The four best in-code essays**, worth more than most blog posts: `dict.c`'s `dictScan` comment (the reverse-binary cursor) · `aof.c`'s file header (why the manifest exists) · `replication.c`'s file header · `hyperloglog.c`'s header (a paper summary in comments).
+4. **antirez's blog** — `antirez.com`, and the pre-2018 archive. Redis's design rationale lives here, not in papers: "Redis persistence demystified" · "Random notes on improving the Redis LRU algorithm" (the sampled-LRU scatter plots, ch. 24) · "Streams: a new general purpose data structure in Redis" · "Redis Sentinel and CAP" (the consistency position, stated by the author) · "Clarifications about Redis and Memcached".
+5. **[P] Pugh, "Skip Lists: A Probabilistic Alternative to Balanced Trees"** (CACM 1990) — `epaperpress.com/sortsearch/download/skiplist.pdf`. Ten pages, and you implement it in ch. 17.
+6. **[P] Aumasson & Bernstein, "SipHash: a fast short-input PRF"** (INDOCRYPT 2012) — `131002.net/siphash/siphash.pdf`. Why the keyspace hash is a keyed PRF and not something faster (ch. 15).
 
-**Anti-list**: build-your-own-redis tutorials. You're past them by ch. 11, and their shortcuts (no incremental parse, no encodings, no propagation discipline) are exactly the bugs this book audits out of you.
+## Tier 2 — the mechanism papers, each tied to one chapter
+
+7. **[P] Yang, Yue, Rashmi, "A large-scale analysis of hundreds of in-memory key-value cache clusters at Twitter"** (OSDI 2020) — `usenix.org/conference/osdi20/presentation/yang`. **The highest-value paper on this list for a cache builder.** Real workloads, and several findings that contradict folklore: TTL expiry removes more objects than eviction does, many workloads aren't Zipfian the way you were told, and FIFO is often within noise of LRU. Read before ch. 24.
+8. **[P] Yang, Yue, Rashmi, "Segcache"** (NSDI 2021) — `usenix.org/conference/nsdi21/presentation/yang-juncheng`. A cache built *around* TTLs with a time-indexed segment structure — the argument Redis 8's `ebuckets` rewrite is making. Read with ch. 9.
+9. **[P] Atikoglu et al., "Workload Analysis of a Large-Scale Key-Value Store"** (SIGMETRICS 2012) — `cs.cmu.edu/~dga/papers/memcachier-sigmetrics2012.pdf`. Facebook's memcached traces: tiny values, huge read skew, short TTLs. The workload every design choice in this book is answering. Read with ch. 1.
+10. **[P] Nishtala et al., "Scaling Memcache at Facebook"** (NSDI 2013) — `usenix.org/system/files/conference/nsdi13/nsdi13-final170_update.pdf`. The operations paper: thundering herds, stale sets, cold-cache warmup. Pairs with ch. 38.
+11. **[P] Pillai et al., "All File Systems Are Not Created Equal"** (OSDI 2014) — `usenix.org/system/files/conference/osdi14/osdi14-paper-pillai.pdf`. Which crash-atomicity properties you may actually assume. Read with ch. 21.
+12. **[P] Rebello et al., "Can Applications Recover from fsync Failures?"** (USENIX ATC 2020) — `usenix.org/conference/atc20/presentation/rebello`. A failed fsync can mark pages clean, so the retry lies to you. Read with ch. 21, then the PostgreSQL fsyncgate thread at `wiki.postgresql.org/wiki/Fsync_Errors`.
+13. **[P] Rosenblum & Ousterhout, "The Design and Implementation of a Log-Structured File System"** (SOSP 1991) — `web.stanford.edu/~ouster/cgi-bin/papers/lfs.pdf`. Your AOF is a log-structured store and `BGREWRITEAOF` is segment cleaning. Read with ch. 20.
+14. **[P] Evans, "A Scalable Concurrent malloc(3) Implementation for FreeBSD"** (BSDCan 2006) — `people.freebsd.org/~jasone/jemalloc/bsdcan2006/jemalloc.pdf`. jemalloc, which Redis links by default; size classes explain the `used_memory` vs `used_memory_rss` gap. Read with ch. 14.
+15. **[P] Flajolet, Fusy, Gandouet, Meunier, "HyperLogLog"** (AofA 2007) — `algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf`. Cardinality in 12 KB. Needed only if you take that ch. 39 menu row, but it is the prettiest algorithm in Redis.
+16. **[P] Morris, "Counting Large Numbers of Events in Small Registers"** (CACM 1978) — two pages; the ancestor of the LFU counter in ch. 24. Overview: `en.wikipedia.org/wiki/Approximate_counting_algorithm`.
+17. **[P] Megiddo & Modha, "ARC: A Self-Tuning, Low Overhead Replacement Cache"** (FAST 2003) and **[P] Einziger et al., "TinyLFU"** (`arxiv.org/abs/1512.00727`) — recency and frequency combined, and the sketch-based modern successor. Both are ch. 24 depth.
+18. **[P] Das, Gupta, Motivala, "SWIM"** (DSN 2002) — `cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf`. Cluster's PFAIL/FAIL gossip in its original form. Read with ch. 34.
+19. **[P] Karger et al., "Consistent Hashing and Random Trees"** (STOC 1997) — read it to answer *why Redis Cluster uses 16384 fixed slots instead*. Write your answer down; it's a good interview story.
+20. **Geohash and Z-order** — `en.wikipedia.org/wiki/Geohash`, `en.wikipedia.org/wiki/Z-order_curve`, and Morton's 1966 IBM report. The §15.9 mechanism.
+
+## Tier 3 — placing Redis on the map
+
+21. **Kleppmann, *Designing Data-Intensive Applications*** — ch. 5 (replication) after ch. 30, ch. 7 (transactions) after ch. 33, ch. 9 (consistency and consensus) to see what Redis declines to do. The best general framing anywhere.
+22. **[P] Ongaro & Ousterhout, "In Search of an Understandable Consensus Algorithm"** (2014) — `raft.github.io/raft.pdf`, its §5.1–5.4. Not because Redis uses Raft, but because it deliberately doesn't: this is the price of never losing an acknowledged write. Your ConsulMe project is the other side of this coin.
+23. **[P] DeCandia et al., "Dynamo"** (SOSP 2007) — `allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf`. The third answer to replication: sloppy quorums and reconciliation.
+24. **DragonflyDB architecture docs** (`github.com/dragonflydb/dragonfly/blob/main/docs`) — the §2.4 road not taken, argued well by the people who took it.
+25. **Valkey** (`github.com/valkey-io/valkey`) and **KeyDB** release notes — what the forks change first tells you where the pressure is.
+26. **"The C10K problem"**, Dan Kegel — `kegel.com/c10k.html`; and Beej's Guide — `beej.us/guide/bgnet` — if sockets ever feel fuzzy.
+27. **Redis University** — `university.redis.io`; RU301 (operations) is a good victory lap after ch. 38.
+
+**Anti-list:** build-your-own-Redis tutorials. You are past them by ch. 11, and their shortcuts — no incremental parse, no encodings, no propagation discipline — are precisely the bugs the audit in the front matter is about.
 
 ---
 
@@ -2673,7 +2717,12 @@ scripts/mergelogs.sh node*.log | less                        # ch. 28 cockpit
 
 ```bash
 # 1. Redis source — already at ~/Code/Learning/redis  (make -j8 once; you need the binaries)
-# 2. Papers directory: skiplists-pugh.pdf, morris-counting-1978.pdf, hyperloglog-flajolet.pdf
+# 2. Papers directory — fetch these now, they're all free PDFs (Appendix D has the links):
+#      pugh-skiplists-1990.pdf        siphash-2012.pdf         twitter-cache-osdi20.pdf
+#      segcache-nsdi21.pdf            fb-workload-sigmetrics12.pdf
+#      pillai-fs-osdi14.pdf           fsync-failures-atc20.pdf lfs-sosp91.pdf
+#      jemalloc-bsdcan06.pdf          hyperloglog-flajolet07.pdf morris-counting-1978.pdf
+#      swim-dsn02.pdf                 arc-fast03.pdf           tinylfu-2015.pdf
 # 3. Docs offline: redis.io/docs → the six spec pages (Appendix D tier 1) — save as PDF; you'll read each 2-3×
 # 4. Reference implementations to READ (never import):
 #    github.com/redis/redis (have it) · github.com/valkey-io/valkey (the fork, actively diverging)
@@ -2689,19 +2738,25 @@ scripts/mergelogs.sh node*.log | less                        # ch. 28 cockpit
 - **ch. 34**: the cluster spec page > the code for concepts; the code > the spec for gossip packet details.
 - **ch. 38**: real `redis.conf` (repo root) — read every comment once; it is the best-documented config file in open source and half of it is production wisdom in disguise.
 
+**The four papers to read even if you read nothing else**, in this order:
+1. **Pugh 1990** (skip lists) before ch. 17 — you implement it.
+2. **Yang et al., OSDI 2020** (Twitter cache analysis) before ch. 24 — it tells you which of your instincts about caching are wrong.
+3. **Pillai et al., OSDI 2014** (crash consistency) before ch. 23 — it tells you which of your instincts about files are wrong.
+4. **Kleppmann, DDIA ch. 5** after ch. 30 — it places what you just built on the map.
+
 ## Per build chapter — implementation references
 
 | Build chapter | Spec / oracle material |
 |---|---|
 | **7** server core | `redis.io/topics/protocol` · `networking.c` (ch. 5) · `tests/unit/protocol.tcl` · `github.com/tidwall/redcon` (compare parsers *after* yours works) |
 | **11** keyspace + strings | `redis.io/commands/{set,expire,scan,object}` · `tests/unit/{expire,keyspace,scan}.tcl`, `tests/unit/type/string.tcl` · ch. 10 |
-| **17** data structures | `dict.c` / `listpack.c` / `t_zset.c` / `intset.c` header comments — the formats *are* the spec · Pugh 1990 · ch. 16 |
+| **17** data structures | `dict.c` / `listpack.c` / `t_zset.c` / `intset.c` header comments — the formats *are* the spec · **Pugh 1990**, **SipHash 2012** · ch. 16 |
 | **19** collections | `redis.io/commands` per family · `tests/unit/type/{list,hash,set,zset}.tcl` (steal cases wholesale) · ch. 18 |
-| **23** persistence | `redis.io/topics/persistence` · `rdb.h` opcodes · `tests/integration/{aof,rdb,aof-multi-part}.tcl` · ch. 21, ch. 22 |
-| **26** eviction | `redis.io/topics/lru-cache` · antirez's LRU-notes post · `tests/unit/maxmemory.tcl` · ch. 25 |
-| **30** replication | `redis.io/topics/replication` · `tests/integration/replication*.tcl` (especially `-psync`) · ch. 29 · DDIA ch. 5 afterwards |
+| **23** persistence | `redis.io/topics/persistence` · `rdb.h` opcodes · **Pillai OSDI 2014**, **Rebello ATC 2020**, **LFS SOSP 1991** · `tests/integration/{aof,rdb,aof-multi-part}.tcl` · ch. 21, ch. 22 |
+| **26** eviction | `redis.io/topics/lru-cache` · antirez's LRU-notes post · **Yang OSDI 2020**, **ARC**, **TinyLFU** · `tests/unit/maxmemory.tcl` · ch. 25 |
+| **30** replication | `redis.io/topics/replication` · `tests/integration/replication*.tcl` (especially `-psync`) · ch. 29 · **DDIA ch. 5**, then **Raft (paper §5.1–5.4)** and **Dynamo** for contrast |
 | **33** tx / blocking / pubsub | `redis.io/topics/{transactions,pubsub,notifications}` · `tests/unit/{multi,pubsub}.tcl` · ch. 32 |
-| **36** cluster | `redis.io/topics/cluster-spec` (the assignment) · `tests/unit/cluster/*.tcl` · ch. 35 · your ConsulMe gossip notes |
+| **36** cluster | `redis.io/topics/cluster-spec` (the assignment) · **SWIM (DSN 2002)**, **Karger 1997** · `tests/unit/cluster/*.tcl` · ch. 35 · your ConsulMe gossip notes |
 | **39** stretch menu | per row: `redis.io/topics/streams-intro` · Flajolet 2007 · Geohash/Z-order wiki + `geohash_helper.c` · `redis.io/topics/{sentinel,latency,security}` |
 
 ## The order, condensed (pin above your desk)
