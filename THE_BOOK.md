@@ -1,5 +1,5 @@
 # DiceMe — The Complete Book
-
+**file:///Users/shivam.garg/Documents/Redis%20Internals%20-%20Reading%20Materials.pdf**
 **Everything needed to build a production-grade Redis from scratch, in Go, starting from the DiceMe you already have.**
 
 Reference source: `~/Code/Learning/redis` @ commit `d22066d09` (version 8.9.241). Every `file:function` reference in this document is verified against that commit. Line numbers drift across versions; function names don't — search for the function, not the line.
