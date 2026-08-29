@@ -12,13 +12,15 @@ Reference source: `~/Code/Learning/redis` @ commit `d22066d09` (version 8.9.241)
 
 **There are exactly two kinds of numbered thing in this book: Parts and Chapters.** Chapters run 1 to 39 in the order you work through them — read chapter 1, then 2, then 3, and so on to the end. There is no separate track of "stages" or "phases" to cross-reference; a chapter that says *Build* is a chapter you build, and it sits exactly where it belongs in the sequence.
 
-Chapters come in three kinds, and the rhythm repeats all the way down:
+Chapters come in three kinds, and every chapter opens with a **"What to do with this chapter"** box telling you which kind it is, how long it takes, what you must have finished first, and how you know you're done. Read that box before anything else.
 
-| Kind | What it is | How long |
-|---|---|---|
-| **Concept** | Why the mechanism exists and how real Redis does it | 2–5 h of reading |
-| **Reading the source** | A guided tour of the real Redis code for what you're about to build | 1.5–3 h |
-| **Build** | The full spec for the code, with a done-when script that proves it | 20–55 h |
+| Kind | What you actually do |
+|---|---|
+| **Read it** | Read the chapter, plus the short **Required reading** list at the top. Write no code. |
+| **Reading the source** | Follow the guided tour through the real code with the repo open. Write no code of your own. |
+| **Build it** | Write the code. The chapter is the spec, and it ends with a done-when script that proves it works. |
+
+**There is no optional reading.** Everything in a chapter's Required-reading box is required and has been kept short on purpose. Extra depth lives in Appendix D, and you go there only if you want to.
 
 So a typical arc is: read two concept chapters, take the source tour, then build. Part II is the pattern in miniature — event loop, RESP, source tour, setup, build.
 
@@ -292,17 +294,18 @@ Why this system is shaped the way it is, and the one architectural decision you 
 
 # Chapter 1 — What Redis actually is
 
-> **Concept · 2 h.** Start here. Nothing to build yet.
-
-> ### 📚 Read alongside — 2 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | Redis docs: "Introduction to Redis" (`redis.io/docs`), then the command pages `redis.io/commands/{set,expire,lpush,zadd}` — read the **complexity** line on each | 45 min |
-> | **[CORE]** | "Latency Numbers Every Programmer Should Know" — `gist.github.com/jboner/2841832` | 10 min |
-> | **[OPT]** | The `MANIFESTO` file at the redis repo root — antirez's design values; 10 minutes that explain fifty decisions | 10 min |
-> | **[OPT]** | antirez, "Redis persistence demystified" — `antirez.com` (2012, mental model unchanged) | 30 min |
-> | **[OPT]** | **Atikoglu et al., "Workload Analysis of a Large-Scale Key-Value Store"** (SIGMETRICS 2012) — Facebook's memcached traces. The paper that tells you what real cache workloads actually look like: tiny values, enormous read skew, short TTLs. Every design choice in this book is answering this workload. `www.cs.cmu.edu/~dga/papers/memcachier-sigmetrics2012.pdf` | 1 h |
-> | **[OPT]** | **Nishtala et al., "Scaling Memcache at Facebook"** (NSDI 2013) — the canonical operations paper for in-memory caching at scale; read it for the failure modes you'll meet in ch. 38. `usenix.org/system/files/conference/nsdi13/nsdi13-final170_update.pdf` | 1 h |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 2 h · **Before you start:** Nothing.
+>
+> **You're done when:** You can answer the chapter-1 self-check from memory.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | Redis docs: "Introduction to Redis" (`redis.io/docs`), then the command pages `redis.io/commands/{set,expire,lpush,zadd}` — read the **complexity** line on each | 45 min |
+> | "Latency Numbers Every Programmer Should Know" — `gist.github.com/jboner/2841832` | 10 min |
 
 ## 1.1 The one bet
 
@@ -390,14 +393,18 @@ Knowing the refusals prevents accidentally building them:
 
 # Chapter 2 — Threads in a "single-threaded" server
 
-> **Concept · 2 h.** The most consequential chapter in the book: §2.4 decides the architecture of everything that follows. Deciding it late means rewriting chapters 7–19.
-
-> ### 📚 Read alongside — 2 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | `bio.c` — all of it (~350 lines): the job queue Redis trusts with fsync | 45 min |
-> | **[CORE]** | `lazyfree.c`: `lazyfreeGetFreeEffort` + the UNLINK path | 30 min |
-> | **[OPT]** | `iothread.c` — the 8.x io-threads rewrite (per-thread event loops, client handoff queues, prefetch). §2.3 explains how it differs from the 6.0 batch-and-barrier design most articles describe. | 30 min |
+> ### What to do with this chapter
+> **Read it, then write down your decision.** No production code, but §2.4 is a choice you must actually make and record.
+>
+> **Time:** 2 h · **Before you start:** Chapter 1.
+>
+> **You're done when:** You have written the §2.4 architecture decision in your own words in `NOTES.md`. Everything you build later assumes it.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | `bio.c` — all of it (~350 lines): the job queue Redis trusts with fsync | 45 min |
+> | `lazyfree.c`: `lazyfreeGetFreeEffort` + the UNLINK path | 30 min |
 
 ## 2.1 The truth table
 
@@ -460,17 +467,19 @@ Everything between the socket and the command table. You finish this part with a
 
 # Chapter 3 — The event loop
 
-> **Concept · 5 h.** Pairs with chapter 4.
-
-> ### 📚 Read alongside — 3 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | `ae.c` + `ae.h` — the whole thing; the cleanest event loop you'll ever read. Entry: `aeMain`, `aeProcessEvents`. | 1 h |
-> | **[CORE]** | `ae_kqueue.c` — you wrote one of these (`server/async_tcp.go`); compare choices line by line | 20 min |
-> | **[USE]** | "The C10K problem", Dan Kegel — `kegel.com/c10k.html`; the document that named the design space | 30 min |
-> | **[OPT]** | **RFC 896** (Nagle, 1984) and **RFC 1122 §4.2.3.4** — why `TCP_NODELAY` exists and what the 40 ms you'd otherwise pay actually is. Two pages of the original. `rfc-editor.org/rfc/rfc896` | 20 min |
-> | **[OPT]** | Welsh, Culler, Brewer, **"SEDA: An Architecture for Well-Conditioned, Scalable Internet Services"** (SOSP 2001) — the staged/event-driven design space Redis sits in, argued properly. Useful contrast for §2.4. `sosp.org/2001/papers/welsh.pdf` | 1 h |
-> | **[OPT]** | Any good "how the Go netpoller works" writeup — you build on one of these whether you like it or not | 45 min |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 5 h · **Before you start:** Chapter 2.
+>
+> **You're done when:** You can say where in the loop a command executes and where its reply reaches the socket.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | `ae.c` + `ae.h` — the whole thing; the cleanest event loop you'll ever read. Entry: `aeMain`, `aeProcessEvents`. | 1 h |
+> | `ae_kqueue.c` — you wrote one of these (`server/async_tcp.go`); compare choices line by line | 20 min |
+> | "The C10K problem", Dan Kegel — `kegel.com/c10k.html`; the document that named the design space | 30 min |
 
 ## 3.1 The problem the event loop solves
 
@@ -564,14 +573,18 @@ The subtle point: **command execution happens inside the file-event handler**, s
 
 # Chapter 4 — RESP: the wire protocol
 
-> **Concept · 4 h.** The parser you build in chapter 7 is what the audit's findings 1 and 2 are about.
-
-> ### 📚 Read alongside — 2 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | Redis docs: "RESP protocol spec" — `redis.io/topics/protocol`; RESP2 carefully, RESP3 skim | 1 h |
-> | **[USE]** | `networking.c`: `processInputBuffer`, `processMultibulkBuffer`, `processInlineBuffer` — the shape of a real incremental parser | 45 min |
-> | **[OPT]** | Your `core/resp.go` — reread after the spec; list what's missing before checking against §4.3 | 15 min |
+> ### What to do with this chapter
+> **Read it.** No code — you write the parser in chapter 7.
+>
+> **Time:** 4 h · **Before you start:** Chapter 3.
+>
+> **You're done when:** You can describe exactly what your parser must do with a half-received command.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | Redis docs: "RESP protocol spec" — `redis.io/topics/protocol`; RESP2 carefully, RESP3 skim | 1 h |
+> | `networking.c`: `processInputBuffer`, `processMultibulkBuffer`, `processInlineBuffer` — the shape of a real incremental parser | 45 min |
 
 ## 4.1 The shape of RESP2
 
@@ -648,7 +661,13 @@ A client sends N commands without awaiting replies; the server executes in order
 
 # Chapter 5 — Reading the source: the server core
 
-> **Reading the source · 7 h.** Five guided tours through the real Redis code. Do them before chapter 7, not instead of it.
+> ### What to do with this chapter
+> **Read the real Redis source**, following the five tours here. No code of your own.
+>
+> **Time:** 7 h · **Before you start:** Chapters 2, 3, 4.
+>
+> **You're done when:** You have run real Redis, and written down the call chain from socket to command by hand.
+
 
 ## Run it before reading it (45 min)
 
@@ -689,7 +708,13 @@ What you steal: the gate sequence for your dispatcher; `(reply, effect)` propaga
 
 # Chapter 6 — Project setup and conventions
 
-> **Setup · 5 h.** Four of those hours build the diff harness, which pays back over the whole project.
+> ### What to do with this chapter
+> **Set up the project and build the diff harness.** Tooling, not features.
+>
+> **Time:** 5 h · **Before you start:** Chapter 5.
+>
+> **You're done when:** `tests/harness/diff.sh` can run a command list against real Redis and DiceMe and show you a diff.
+
 
 ## 6.1 Rules
 
@@ -757,7 +782,13 @@ Plus a Go mode for pipelining/blocking cases (two `net.Conn`s, raw RESP bytes bo
 
 # Chapter 7 — Build: the server core, rebuilt
 
-> **Build · ~25 h.** Prerequisites: chapters 2, 3, 4, 5, 6. Retires audit findings 1, 2, 5, 6, 9, 15, 16, 17.
+> ### What to do with this chapter
+> **Build it.** ~25 h of code.
+>
+> **Time:** 25 h · **Before you start:** Chapters 2, 3, 4, 5, 6.
+>
+> **You're done when:** The done-when checks in this chapter pass: `redis-benchmark -P 16` runs clean, the RESP fuzzer finds no panic, and an idle server still expires keys.
+
 
 **Goal**: DiceMe survives anything a client can throw at the *transport and protocol* layer, with the ch. 2 architecture underneath. No new commands — this chapter is plumbing, and it retires audit findings 1, 2, 5, 6, 9, 15, 16, 17.
 
@@ -836,14 +867,18 @@ The object model, the keyspace choke point, and the expiry contract — then the
 
 # Chapter 8 — The object model and the keyspace
 
-> **Concept · 2 h.**
-
-> ### 📚 Read alongside — 2 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | `object.c`: `createObject`, `tryObjectEncoding`, `objectCommand` | 45 min |
-> | **[CORE]** | `db.c`: `lookupKeyReadWithFlags`, `dbAdd`, `setKey` — the keyspace API every type file calls | 45 min |
-> | **[OPT]** | `server.h`: the `robj` struct + the `OBJ_*` / `OBJ_ENCODING_*` defines — your `core/object.go` is a port of this; see what you left out | 20 min |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 2 h · **Before you start:** Chapter 7.
+>
+> **You're done when:** You can list the five cross-cutting concerns that hang off the keyspace write path.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | `object.c`: `createObject`, `tryObjectEncoding`, `objectCommand` | 45 min |
+> | `db.c`: `lookupKeyReadWithFlags`, `dbAdd`, `setKey` — the keyspace API every type file calls | 45 min |
 
 ## 8.1 robj: one header for every value
 
@@ -910,15 +945,19 @@ Redis has `databases 16` (`SELECT n`) — a legacy feature; Cluster only allows 
 
 # Chapter 9 — Expiration
 
-> **Concept · 2 h.** §9.4 only pays off in chapter 30, but it must be built correctly now.
-
-> ### 📚 Read alongside — 2 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | `expire.c`: top-of-file comment + `activeExpireCycle` (the modern one walks ebuckets; read the *algorithm description* in the comment, which still describes the classic sampling contract) | 45 min |
-> | **[CORE]** | `db.c:expireIfNeeded` — the lazy path and the replica rule; read the comment block above it three times | 30 min |
-> | **[USE]** | `tests/unit/expire.tcl` — expiry semantics as executable spec; plus `redis.io/commands/expire` (the "Appendix: how Redis expires keys" section is the official writeup of this chapter) | 30 min |
-> | **[OPT]** | **Yang, Yue, Rashmi, "Segcache: a memory-efficient and scalable in-memory key-value cache for small objects"** (NSDI 2021) — a cache designed *around* TTLs, with an approximate-time-indexed segment structure that expires in bulk instead of sampling. It is the argument Redis 8's `ebuckets` rewrite (§9.3) is making, done first and measured. `usenix.org/conference/nsdi21/presentation/yang-juncheng` | 1 h |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 2 h · **Before you start:** Chapter 8.
+>
+> **You're done when:** You can explain why a replica never expires a key on its own.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | `expire.c`: top-of-file comment + `activeExpireCycle` (the modern one walks ebuckets; read the *algorithm description* in the comment, which still describes the classic sampling contract) | 45 min |
+> | `db.c:expireIfNeeded` — the lazy path and the replica rule; read the comment block above it three times | 30 min |
+> | `tests/unit/expire.tcl` — expiry semantics as executable spec; plus `redis.io/commands/expire` (the "Appendix: how Redis expires keys" section is the official writeup of this chapter) | 30 min |
 
 ## 9.1 The contract
 
@@ -992,7 +1031,13 @@ Two corollaries you will implement in ch. 30:
 
 # Chapter 10 — Reading the source: keyspace and strings
 
-> **Reading the source · 3 h.** Two tours. Do them before chapter 11.
+> ### What to do with this chapter
+> **Read the real Redis source**, following the two tours here. No code of your own.
+>
+> **Time:** 3 h · **Before you start:** Chapters 8 and 9.
+>
+> **You're done when:** You can name the one function every key lookup passes through, and what it does on a replica.
+
 
 ## Objects & strings (1.5 h)
 
@@ -1006,7 +1051,13 @@ What you steal: the choke-point function set (§8.3); replica-hides-master-delet
 
 # Chapter 11 — Build: keyspace, strings, and expiry, done right
 
-> **Build · ~35 h.** Prerequisites: chapters 8, 9, 10. Retires audit findings 7, 10, 11, 13, 14, 18. Your first milestone.
+> ### What to do with this chapter
+> **Build it.** ~35 h of code. Your first milestone.
+>
+> **Time:** 35 h · **Before you start:** Chapters 8, 9, 10.
+>
+> **You're done when:** The done-when script in this chapter passes, and `tests/ch11_commands.txt` diffs clean against real Redis.
+
 
 **Goal**: the string type and key-management surface, semantics byte-identical to Redis, expiry per ch. 9. Retires audit findings 7, 10, 11, 13, 14, 18.
 
@@ -1066,7 +1117,13 @@ redis-cli -p 7379 SET s abc; APPEND s d; OBJECT ENCODING s   # raw
 
 # Chapter 12 — The big picture
 
-> **Concept · 2 h.** Deliberately placed *after* your first build — it would be abstract before, and it lands properly now.
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 2 h · **Before you start:** Chapter 11 — deliberately placed after your first build, because it is abstract before it.
+>
+> **You're done when:** You can draw the layer diagram and say what belongs in `beforeSleep` versus `serverCron`.
+
 
 ## 12.1 The process at rest
 
@@ -1121,7 +1178,13 @@ The dependency arrows only point down. `t_list.c` doesn't know AOF exists; `dict
 
 # Chapter 13 — Request lifecycles, traced
 
-> **Concept · 2 h.** Read with chapter 12.
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 2 h · **Before you start:** Chapter 12.
+>
+> **You're done when:** You can trace `SET k v EX 10` from socket bytes to disk bytes from memory.
+
 
 Trace these by hand once each — they are the integration tests of your understanding. Each numbered step names the real function.
 
@@ -1182,17 +1245,20 @@ The computer-science core: five structures built from scratch, then the four col
 
 # Chapter 14 — Memory
 
-> **Concept · 3 h.** §14.4 is the fork problem, and it shapes all of Part V — you'll come back to it before chapter 23.
-
-> ### 📚 Read alongside — 3 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | Redis docs: "Memory optimization" — `redis.io/topics/memory-optimization`; the encodings/thresholds section | 30 min |
-> | **[CORE]** | `sds.h` header comment + the five `sdshdr` struct variants — how far Redis goes to save 3 bytes per string | 30 min |
-> | **[USE]** | `zmalloc.c`: `zmalloc_used_memory` — how used-memory accounting actually works (a counter, not a query) | 20 min |
-> | **[OPT]** | antirez, "Redis latency spikes and the Linux kernel" + any fork/COW writeup — background for §20.2 | 40 min |
-> | **[CORE]** | **Evans, "A Scalable Concurrent malloc(3) Implementation for FreeBSD"** (BSDCan 2006) — the jemalloc paper. Redis links jemalloc *by default* precisely for the fragmentation behaviour §14.2 describes; size classes and arenas are why `used_memory_rss` diverges from `used_memory`. `people.freebsd.org/~jasone/jemalloc/bsdcan2006/jemalloc.pdf` | 1 h |
-> | **[OPT]** | Redis docs, "Diagnosing latency issues" — `redis.io/topics/latency` — the THP/fork/swap section is the practical companion to §14.4 | 30 min |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 3 h · **Before you start:** Chapter 13.
+>
+> **You're done when:** You can explain why Go cannot fork, and what that costs you in chapter 23.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | Redis docs: "Memory optimization" — `redis.io/topics/memory-optimization`; the encodings/thresholds section | 30 min |
+> | `sds.h` header comment + the five `sdshdr` struct variants — how far Redis goes to save 3 bytes per string | 30 min |
+> | `zmalloc.c`: `zmalloc_used_memory` — how used-memory accounting actually works (a counter, not a query) | 20 min |
+> | **Evans, "A Scalable Concurrent malloc(3) Implementation for FreeBSD"** (BSDCan 2006) — the jemalloc paper. Redis links jemalloc *by default* precisely for the fragmentation behaviour §14.2 describes; size classes and arenas are why `used_memory_rss` diverges from `used_memory`. `people.freebsd.org/~jasone/jemalloc/bsdcan2006/jemalloc.pdf` | 1 h |
 
 ## 14.1 Why memory layout is the whole game
 
@@ -1248,18 +1314,21 @@ Go's GC scans pointers. 100M `map[string]*Obj` entries = long mark phases and la
 
 # Chapter 15 — The data structures you will build
 
-> **Concept · 12 h.** Theory here; the build spec is chapter 17.
-
-> ### 📚 Read alongside — 4 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | `dict.c` top-of-file comment + `dictRehash`, `dictScan` (read the reverse-binary-iteration essay above `dictScan` — the best comment in the codebase) | 1 h |
-> | **[CORE]** | `listpack.c` header comment — the exact byte format, worked through | 45 min |
-> | **[CORE]** | Pugh, "Skip Lists: A Probabilistic Alternative to Balanced Trees" (CACM 1990) — `epaperpress.com/sortsearch/download/skiplist.pdf`; short, readable; then `t_zset.c:zslInsert` | 1 h |
-> | **[USE]** | `quicklist.h` struct comments; `intset.c` (tiny — read it all) | 30 min |
-> | **[OPT]** | `rax.c` header comment (radix tree, used by streams) — skim for ch. 39 | 20 min |
-> | **[CORE]** | **Aumasson & Bernstein, "SipHash: a fast short-input PRF"** (INDOCRYPT 2012) — `131002.net/siphash/siphash.pdf`. Redis's dict hashes with SipHash-1-2 (`siphash.c`), not a fast non-cryptographic hash, and §15.2 explains why: without a keyed PRF an attacker picks colliding keys and turns every O(1) lookup into O(n). Hash-flooding is the one security bug a from-scratch keyspace reliably ships with. | 45 min |
-> | **[OPT]** | Fredman, Komlós, Szemerédi on universal hashing, *or* the shorter Crosby & Wallach, **"Denial of Service via Algorithmic Complexity Attacks"** (USENIX Security 2003) — the attack SipHash answers. `usenix.org/legacy/events/sec03/tech/full_papers/crosby/crosby.pdf` | 40 min |
+> ### What to do with this chapter
+> **Read it.** No code — you build all five structures in chapter 17.
+>
+> **Time:** 12 h · **Before you start:** Chapter 14.
+>
+> **You're done when:** You can state SCAN's guarantee and why reverse-binary cursor order provides it.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | `dict.c` top-of-file comment + `dictRehash`, `dictScan` (read the reverse-binary-iteration essay above `dictScan` — the best comment in the codebase) | 1 h |
+> | `listpack.c` header comment — the exact byte format, worked through | 45 min |
+> | Pugh, "Skip Lists: A Probabilistic Alternative to Balanced Trees" (CACM 1990) — `epaperpress.com/sortsearch/download/skiplist.pdf`; short, readable; then `t_zset.c:zslInsert` | 1 h |
+> | `quicklist.h` struct comments; `intset.c` (tiny — read it all) | 30 min |
+> | **Aumasson & Bernstein, "SipHash: a fast short-input PRF"** (INDOCRYPT 2012) — `131002.net/siphash/siphash.pdf`. Redis's dict hashes with SipHash-1-2 (`siphash.c`), not a fast non-cryptographic hash, and §15.2 explains why: without a keyed PRF an attacker picks colliding keys and turns every O(1) lookup into O(n). Hash-flooding is the one security bug a from-scratch keyspace reliably ships with. | 45 min |
 
 These are built as **standalone libraries with their own tests** in chapter 17, before ch. 19 wires them into commands. This chapter is the theory; ch. 17 is the spec.
 
@@ -1362,7 +1431,13 @@ The lesson generalizes: **map a query shape onto a structure you already have** 
 
 # Chapter 16 — Reading the source: the dict
 
-> **Reading the source · 2 h.**
+> ### What to do with this chapter
+> **Read the real Redis source**, following the tour here. No code of your own.
+>
+> **Time:** 2 h · **Before you start:** Chapter 15.
+>
+> **You're done when:** You can re-derive the `dictScan` argument without the comment in front of you.
+
 
 ## dict (2 h)
 
@@ -1371,7 +1446,13 @@ What you steal: two-table rehash state machine; rehash-step placement (every op 
 
 # Chapter 17 — Build: the data-structure libraries
 
-> **Build · ~45 h.** Prerequisites: chapters 14, 15, 16. Five standalone libraries with their own tests.
+> ### What to do with this chapter
+> **Build it.** ~45 h of code — five standalone libraries with their own tests.
+>
+> **Time:** 45 h · **Before you start:** Chapters 14, 15, 16.
+>
+> **You're done when:** `go test ./core/ds/...` is green, the fuzzers run clean, and chapter 11's harness still diffs clean on the new dict.
+
 
 **Goal**: five packages under `core/ds/`, each standalone, tested, benchmarked, and API-shaped for ch. 19. No server changes except swapping the keyspace onto your dict at the end. Order: intset (warm-up) → dict → listpack → skiplist → quicklist.
 
@@ -1408,7 +1489,13 @@ Tests: model-diff vs `[]string`; node-count sanity under interleaved push/pop (n
 
 # Chapter 18 — Reading the source: the collections
 
-> **Reading the source · 2.5 h.**
+> ### What to do with this chapter
+> **Read the real Redis source**, following the tour here. No code of your own.
+>
+> **Time:** 2.5 h · **Before you start:** Chapter 17.
+>
+> **You're done when:** You can name each collection's conversion trigger and its exact threshold.
+
 
 ## Collections (2.5 h)
 
@@ -1417,7 +1504,13 @@ What you steal: each conversion trigger, exactly; zslInsert with spans, near-ver
 
 # Chapter 19 — Build: the collections
 
-> **Build · ~40 h.** Prerequisites: chapters 17, 18. After this DiceMe is a genuinely useful database.
+> ### What to do with this chapter
+> **Build it.** ~40 h of code.
+>
+> **Time:** 40 h · **Before you start:** Chapters 17 and 18.
+>
+> **You're done when:** `tests/ch19_commands.txt` diffs clean, and `OBJECT ENCODING` flips at exactly the configured thresholds.
+
 
 **Goal**: lists, hashes, sets, sorted sets — full core command surface, correct encodings with conversions at exact thresholds. After this chapter DiceMe is a *useful database*.
 
@@ -1480,17 +1573,21 @@ Making memory survive a crash, and deciding what dies when memory runs out.
 
 # Chapter 20 — Persistence: RDB and AOF
 
-> **Concept · 4 h.** Read it twice; the crash matrix in §20.6 is the specification.
-
-> ### 📚 Read alongside — 4 h (read twice)
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | Redis docs: "Persistence" — `redis.io/topics/persistence`; the best overview antirez ever wrote, largely still his text | 45 min |
-> | **[CORE]** | `rdb.c`: `rdbSaveRio` (the writer loop) + the opcode defines in `rdb.h` | 1 h |
-> | **[CORE]** | `aof.c`: file comment (the multi-part AOF design doc), `feedAppendOnlyFile`, `flushAppendOnlyFile` | 1 h |
-> | **[USE]** | ch. 21 of this book before building; `tests/integration/aof.tcl` | 45 min |
-> | **[CORE]** | **Rosenblum & Ousterhout, "The Design and Implementation of a Log-Structured File System"** (SOSP 1991) — `web.stanford.edu/~ouster/cgi-bin/papers/lfs.pdf`. Your AOF *is* a log-structured store and `BGREWRITEAOF` *is* segment cleaning; this is where that idea is stated properly, along with the write-amplification arithmetic that decides your rewrite threshold. | 1.5 h |
-> | **[OPT]** | **O'Neil et al., "The Log-Structured Merge-Tree (LSM-Tree)"** (Acta Informatica 1996) — the road Redis did *not* take. Read the intro and §2 only, then write yourself two sentences on why an in-memory-first design doesn't want an LSM. | 45 min |
+> ### What to do with this chapter
+> **Read it, twice.** No code.
+>
+> **Time:** 4 h · **Before you start:** Chapter 19.
+>
+> **You're done when:** You can fill in the crash matrix in §20.6 from memory.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | Redis docs: "Persistence" — `redis.io/topics/persistence`; the best overview antirez ever wrote, largely still his text | 45 min |
+> | `rdb.c`: `rdbSaveRio` (the writer loop) + the opcode defines in `rdb.h` | 1 h |
+> | `aof.c`: file comment (the multi-part AOF design doc), `feedAppendOnlyFile`, `flushAppendOnlyFile` | 1 h |
+> | ch. 21 of this book before building; `tests/integration/aof.tcl` | 45 min |
+> | **Rosenblum & Ousterhout, "The Design and Implementation of a Log-Structured File System"** (SOSP 1991) — `web.stanford.edu/~ouster/cgi-bin/papers/lfs.pdf`. Your AOF *is* a log-structured store and `BGREWRITEAOF` *is* segment cleaning; this is where that idea is stated properly, along with the write-amplification arithmetic that decides your rewrite threshold. | 1.5 h |
 
 ## 20.1 Two philosophies
 
@@ -1598,15 +1695,18 @@ Build the table, then make tests enforce every row (ch. 23 done-when):
 
 # Chapter 21 — Crash safety: the filesystem contract
 
-> **Concept · 2 h.** Short and load-bearing. Read before chapter 23, not after.
-
-> ### 📚 Read alongside — 2 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | **Pillai et al., "All File Systems Are Not Created Equal: On the Complexity of Crafting Crash-Consistent Applications"** (OSDI 2014) — `usenix.org/system/files/conference/osdi14/osdi14-paper-pillai.pdf`. The paper behind §21.2's liturgy: which orderings and atomicity properties you may actually assume, and how they differ per filesystem. It finds these bugs in SQLite, Git and PostgreSQL, so assume they are in yours too. | 1.5 h |
-> | **[CORE]** | **Rebello et al., "Can Applications Recover from fsync Failures?"** (USENIX ATC 2020) — `usenix.org/conference/atc20/presentation/rebello`. On Linux a failed `fsync` may mark the pages clean anyway, so a *retry returns success while the data is gone* — the "fsyncgate" that bit PostgreSQL in 2018. The 1 ms cost in §21.1 is not the only thing worth knowing about fsync. | 1 h |
-> | **[OPT]** | PostgreSQL's "fsyncgate 2018" thread — `wiki.postgresql.org/wiki/Fsync_Errors`. A production database discovering the above in public. | 30 min |
-> | **[OPT]** | Dan Luu, "Files are hard" — `danluu.com/file-consistency/`. The short, readable summary of both papers above. | 20 min |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 2 h · **Before you start:** Chapter 20.
+>
+> **You're done when:** You can write the temp-file/fsync/rename/fsync-dir sequence from memory and say why each step is there.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | **Pillai et al., "All File Systems Are Not Created Equal: On the Complexity of Crafting Crash-Consistent Applications"** (OSDI 2014) — `usenix.org/system/files/conference/osdi14/osdi14-paper-pillai.pdf`. The paper behind §21.2's liturgy: which orderings and atomicity properties you may actually assume, and how they differ per filesystem. It finds these bugs in SQLite, Git and PostgreSQL, so assume they are in yours too. | 1.5 h |
+> | **Rebello et al., "Can Applications Recover from fsync Failures?"** (USENIX ATC 2020) — `usenix.org/conference/atc20/presentation/rebello`. On Linux a failed `fsync` may mark the pages clean anyway, so a *retry returns success while the data is gone* — the "fsyncgate" that bit PostgreSQL in 2018. The 1 ms cost in §21.1 is not the only thing worth knowing about fsync. | 1 h |
 
 ## 21.1 What fsync buys, exactly
 
@@ -1635,7 +1735,13 @@ kill -9 loops at randomized points; power-loss simulation = SIGKILL is honest en
 
 # Chapter 22 — Reading the source: RDB and AOF
 
-> **Reading the source · 4 h.** Two tours.
+> ### What to do with this chapter
+> **Read the real Redis source**, following the two tours here. No code of your own.
+>
+> **Time:** 4 h · **Before you start:** Chapter 21.
+>
+> **You're done when:** You can describe the AOF everysec stall rule and the RDB child lifecycle.
+
 
 ## RDB (2 h)
 
@@ -1649,7 +1755,13 @@ What you steal: flush/fsync policy machine; fake-client loader; rewrite temp-fil
 
 # Chapter 23 — Build: persistence
 
-> **Build · ~45 h.** Prerequisites: chapters 20, 21, 22. Retires audit finding 4. Harder in Go than in C — see §20.5.
+> ### What to do with this chapter
+> **Build it.** ~45 h of code. The hardest engineering problem in this book, because Go has no fork.
+>
+> **Time:** 45 h · **Before you start:** Chapters 20, 21, 22.
+>
+> **You're done when:** Every row of the §20.6 crash matrix passes under repeated `kill -9`, including zero acknowledged loss under `appendfsync always`.
+
 
 **Goal**: RDB save/load, AOF with all three fsync policies, background rewrite, correct boot loading, and the §20.6 crash matrix enforced by tests. Retires audit finding 4. Read ch. 21 first.
 
@@ -1732,17 +1844,19 @@ redis-cli -p 7379 BGSAVE            # under storm: no client sees >200ms latency
 
 # Chapter 24 — Eviction
 
-> **Concept · 2 h.**
-
-> ### 📚 Read alongside — 2 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | `evict.c`: file comment, `evictionPoolPopulate`, `performEvictions` — compare against your `core/eviction*.go` as you read | 1 h |
-> | **[CORE]** | antirez, "Random notes on improving the Redis LRU algorithm" — `antirez.com`; the sampled-LRU design writeup, with the famous scatter plots. Docs companion: `redis.io/topics/lru-cache` | 30 min |
-> | **[OPT]** | The LFU section of `evict.c`'s comment (Morris counter + decay) | 20 min |
-> | **[CORE]** | **Yang, Yue, Rashmi, "A large-scale analysis of hundreds of in-memory key-value cache clusters at Twitter"** (OSDI 2020) — `usenix.org/conference/osdi20/presentation/yang`. The best empirical answer to "does eviction policy actually matter?" Findings that will change what you build: most workloads are *not* Zipfian the way folklore says, TTL-driven expiry removes more objects than eviction does, and FIFO is often within noise of LRU. Read it before you spend a week tuning §24.3. | 1.5 h |
-> | **[OPT]** | **Megiddo & Modha, "ARC: A Self-Tuning, Low Overhead Replacement Cache"** (FAST 2003) — `usenix.org/legacy/events/fast03/tech/full_papers/megiddo/megiddo.pdf`. The classic recency+frequency policy that adapts its own balance; the thing `allkeys-lru` and `allkeys-lfu` are each half of. | 1 h |
-> | **[OPT]** | **Einziger, Friedman, Manes, "TinyLFU: A Highly Efficient Cache Admission Policy"** (2015) — `arxiv.org/abs/1512.00727`. Frequency estimation in a sketch rather than a per-object counter; the modern successor to §24.4's Morris counter, and what Caffeine/Ristretto ship. | 1 h |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 2 h · **Before you start:** Chapter 23.
+>
+> **You're done when:** You can explain the eviction pool's insertion rule and how an 8-bit counter represents a million hits.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | `evict.c`: file comment, `evictionPoolPopulate`, `performEvictions` — compare against your `core/eviction*.go` as you read | 1 h |
+> | antirez, "Random notes on improving the Redis LRU algorithm" — `antirez.com`; the sampled-LRU design writeup, with the famous scatter plots. Docs companion: `redis.io/topics/lru-cache` | 30 min |
+> | **Yang, Yue, Rashmi, "A large-scale analysis of hundreds of in-memory key-value cache clusters at Twitter"** (OSDI 2020) — `usenix.org/conference/osdi20/presentation/yang`. The best empirical answer to "does eviction policy actually matter?" Findings that will change what you build: most workloads are *not* Zipfian the way folklore says, TTL-driven expiry removes more objects than eviction does, and FIFO is often within noise of LRU. Read it before you spend a week tuning §24.3. | 1.5 h |
 
 ## 24.1 When eviction runs
 
@@ -1797,7 +1911,13 @@ Each evicted key is a **write**: propagate `DEL`/`UNLINK` to replicas and AOF (r
 
 # Chapter 25 — Reading the source: eviction
 
-> **Reading the source · 1.5 h.**
+> ### What to do with this chapter
+> **Read the real Redis source**, following the tour here. No code of your own.
+>
+> **Time:** 1.5 h · **Before you start:** Chapter 24.
+>
+> **You're done when:** You have read `evictionPoolPopulate` closely enough to see what your own `Push` gets wrong.
+
 
 ## Eviction (1.5 h)
 
@@ -1806,7 +1926,13 @@ What you steal: pool insertion exactly; just-enough freeing loop; LFU's three ti
 
 # Chapter 26 — Build: maxmemory and eviction
 
-> **Build · ~20 h.** Prerequisites: chapters 24, 25. Retires audit findings 3, 8, 12.
+> ### What to do with this chapter
+> **Build it.** ~20 h of code.
+>
+> **Time:** 20 h · **Before you start:** Chapters 24 and 25.
+>
+> **You're done when:** Under memory pressure, LRU keeps a hot set resident while random visibly does not, and `DEBUG RECOUNT-MEMORY` shows zero drift.
+
 
 **Goal**: byte-budget memory accounting, all eight policies, the real pool. Retires audit findings 3, 8, 12.
 
@@ -1857,17 +1983,20 @@ The wall. Two machines, one dataset, an asynchronous link that drops.
 
 # Chapter 27 — Replication
 
-> **Concept · 5 h.** Read it before chapter 30 and again halfway through it.
-
-> ### 📚 Read alongside — 5 h (read before chapter 30, re-read halfway through it)
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | Redis docs: "Replication" — `redis.io/topics/replication`; full read | 1 h |
-> | **[CORE]** | `replication.c`: the file comment, `syncCommand`, `masterTryPartialResynchronization`, `syncWithMaster` (the replica-side state machine — the longest function you'll read in this project) | 2.5 h |
-> | **[USE]** | `tests/integration/replication-psync.tcl` — partial-resync spec | 45 min |
-> | **[CORE]** | Kleppmann, *Designing Data-Intensive Applications*, **ch. 5 (Replication)** — read the "Problems with Replication Lag" and "leaderless" sections against what you just built. The single best framing of the trade Redis is making. | 1.5 h |
-> | **[OPT]** | **Ongaro & Ousterhout, "In Search of an Understandable Consensus Algorithm"** (USENIX ATC 2014) — `raft.github.io/raft.pdf`. Read the paper’s §5.1–5.4 *only*, and read them as the answer to "what would Redis have to give up to never lose an acknowledged write?" You have the other book for the full treatment; here it is a contrast. | 1.5 h |
-> | **[OPT]** | **DeCandia et al., "Dynamo: Amazon's Highly Available Key-Value Store"** (SOSP 2007) — `allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf`. The third answer: neither Redis's async-primary nor Raft's quorum, but sloppy quorums and reconciliation. Three designs, one problem. | 1.5 h |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 5 h · **Before you start:** Chapter 26.
+>
+> **You're done when:** You can state the two conditions that allow a partial resync.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | Redis docs: "Replication" — `redis.io/topics/replication`; full read | 1 h |
+> | `replication.c`: the file comment, `syncCommand`, `masterTryPartialResynchronization`, `syncWithMaster` (the replica-side state machine — the longest function you'll read in this project) | 2.5 h |
+> | `tests/integration/replication-psync.tcl` — partial-resync spec | 45 min |
+> | Kleppmann, *Designing Data-Intensive Applications*, **ch. 5 (Replication)** — read the "Problems with Replication Lag" and "leaderless" sections against what you just built. The single best framing of the trade Redis is making. | 1.5 h |
 
 ## 27.1 The model
 
@@ -1938,7 +2067,13 @@ Under your engine-goroutine model: the engine owns feed + backlog; per-replica w
 
 # Chapter 28 — Debugging a database
 
-> **Concept · 2 h.** Read *before* chapter 30, not during. Re-read whenever stuck.
+> ### What to do with this chapter
+> **Read it,** and set up the logging and log-merge tooling before you start chapter 30.
+>
+> **Time:** 2 h · **Before you start:** Chapter 27.
+>
+> **You're done when:** You have a log-merge script and a `--seed` flag ready.
+
 
 Read before chapter 30; re-read when stuck there. Same discipline as ConsulMe's debugging chapter, adapted.
 
@@ -1985,7 +2120,13 @@ One hypothesis at a time, written down before testing (NOTES.md). Every fixed bu
 
 # Chapter 29 — Reading the source: replication
 
-> **Reading the source · 3 h.** The longest tour in the book, and effectively the spec for chapter 30.
+> ### What to do with this chapter
+> **Read the real Redis source**, following the tour here. This is effectively the chapter-30 spec.
+>
+> **Time:** 3 h · **Before you start:** Chapters 27 and 28.
+>
+> **You're done when:** You have the replication handshake written out as pseudocode in your own notes.
+
 
 ## Replication (3 h — the long one)
 
@@ -1994,7 +2135,13 @@ What you steal: everything. This tour is effectively the chapter 30 spec; take n
 
 # Chapter 30 — Build: replication — the wall
 
-> **Build · ~55 h.** Prerequisites: chapters 27, 28, 29. The wall — budget the debugging time, it is most of the work.
+> ### What to do with this chapter
+> **Build it.** ~55 h of code. The wall.
+>
+> **Time:** 55 h · **Before you start:** Chapters 27, 28, 29.
+>
+> **You're done when:** A dropped link reconnects with `+CONTINUE` and no RDB transfer, and master and replica digests match after a benchmark.
+
 
 **Goal**: master + replica roles, PSYNC full and partial, backlog, correct propagation, ACK/WAIT, surviving link chaos. Read ch. 27 and ch. 29 immediately before. This phase has the highest bug-hours-per-line in the project; ch. 28's discipline (log every state transition, merge logs) is not optional here.
 
@@ -2053,14 +2200,18 @@ Atomic batches and blocked clients, then sharding across many masters with autom
 
 # Chapter 31 — Transactions, blocking, pub/sub, scripting
 
-> **Concept · 3 h.**
-
-> ### 📚 Read alongside — 3 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | `multi.c` — all of it, it's short; `blocked.c`: file comment + `blockForKeys` / `handleClientsBlockedOnKeys` | 1.5 h |
-> | **[CORE]** | Redis docs: "Transactions" (`redis.io/topics/transactions` — the WATCH/CAS section) + "Pub/sub" (`redis.io/topics/pubsub`) | 45 min |
-> | **[OPT]** | `script.c` file comment — the effects-replication rationale | 20 min |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 3 h · **Before you start:** Chapter 30.
+>
+> **You're done when:** You can say exactly when a blocked BLPOP client wakes, relative to the pushing client's MULTI batch.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | `multi.c` — all of it, it's short; `blocked.c`: file comment + `blockForKeys` / `handleClientsBlockedOnKeys` | 1.5 h |
+> | Redis docs: "Transactions" (`redis.io/topics/transactions` — the WATCH/CAS section) + "Pub/sub" (`redis.io/topics/pubsub`) | 45 min |
 
 ## 31.1 MULTI/EXEC/WATCH
 
@@ -2126,7 +2277,13 @@ Cluster wrinkle: plain `PUBLISH` must broadcast to **every node** in the cluster
 
 # Chapter 32 — Reading the source: MULTI, blocking, and pub/sub
 
-> **Reading the source · 1.5 h.**
+> ### What to do with this chapter
+> **Read the real Redis source**, following the tour here. No code of your own.
+>
+> **Time:** 1.5 h · **Before you start:** Chapter 31.
+>
+> **You're done when:** You can explain the two-phase ready-keys wakeup.
+
 
 ## MULTI, blocking, pubsub (1.5 h)
 
@@ -2135,7 +2292,13 @@ What you steal: dirty-CAS flag mechanics; ready-keys two-phase wakeup; the propa
 
 # Chapter 33 — Build: transactions, blocking, pub/sub
 
-> **Build · ~25 h.** Prerequisites: chapters 31, 32. Short *because* of the architecture you chose in §2.4.
+> ### What to do with this chapter
+> **Build it.** ~25 h of code.
+>
+> **Time:** 25 h · **Before you start:** Chapters 31 and 32.
+>
+> **You're done when:** 1000 scripted WATCH races produce exactly one winner each, and BLPOP wakes on the push.
+
 
 **Goal**: MULTI/EXEC/DISCARD/WATCH/UNWATCH, BLPOP/BRPOP/BLMOVE/WAIT-style blocking, SUBSCRIBE family, keyspace notifications. Ch. 13 is the spec; the choke-point hooks stubbed since ch. 11 all go live. This phase is where the engine-goroutine choice (§2.4) pays out — estimate says 25 h *because* of it.
 
@@ -2170,16 +2333,19 @@ tests/harness/diff.sh tests/ch33_multi.txt      # queue/abort/dirty matrices vs 
 
 # Chapter 34 — Cluster
 
-> **Concept · 4 h.**
-
-> ### 📚 Read alongside — 4 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | Redis docs: "Scale with Redis Cluster" (`redis.io/topics/cluster-tutorial`) + "Redis cluster specification" (`redis.io/topics/cluster-spec`) — the spec is the assignment | 2 h |
-> | **[USE]** | `cluster_legacy.c`: `clusterProcessPacket` (the gossip switchboard), `clusterHandleSlaveFailover`; `cluster.c:getNodeByQuery` (the redirect decision) | 1.5 h |
-> | **[CORE]** | **Das, Gupta, Motivala, "SWIM: Scalable Weakly-consistent Infection-style Process Group Membership Protocol"** (DSN 2002) — `cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf`. Cluster's PFAIL/FAIL gossip is SWIM's shape with different names; 6 pages, §3–4 are the protocol. If you did ConsulMe you have already built this. | 1 h |
-> | **[OPT]** | **Karger et al., "Consistent Hashing and Random Trees"** (STOC 1997) — `dl.acm.org/doi/10.1145/258533.258660`. Then answer, in writing: why does Redis Cluster use 16384 fixed slots instead? (Explicit ownership, cheap resharding, and a 2 KB bitmap that fits in a heartbeat.) | 1 h |
-> | **[OPT]** | Redis docs, "Cluster specification" §"Fault tolerance" — the epoch rules in prose, worth re-reading after §34.5 | 30 min |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 4 h · **Before you start:** Chapter 33.
+>
+> **You're done when:** You can explain MOVED versus ASK and what each does to the client's slot map.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | Redis docs: "Scale with Redis Cluster" (`redis.io/topics/cluster-tutorial`) + "Redis cluster specification" (`redis.io/topics/cluster-spec`) — the spec is the assignment | 2 h |
+> | `cluster_legacy.c`: `clusterProcessPacket` (the gossip switchboard), `clusterHandleSlaveFailover`; `cluster.c:getNodeByQuery` (the redirect decision) | 1.5 h |
+> | **Das, Gupta, Motivala, "SWIM: Scalable Weakly-consistent Infection-style Process Group Membership Protocol"** (DSN 2002) — `cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf`. Cluster's PFAIL/FAIL gossip is SWIM's shape with different names; 6 pages, §3–4 are the protocol. If you did ConsulMe you have already built this. | 1 h |
 
 Cluster answers a different question than Sentinel: not "who replaces the master" but **"how do 10 masters share one keyspace"** — sharding first, HA integrated.
 
@@ -2251,7 +2417,13 @@ Full slots/MOVED/ASK/resharding + gossip + FAIL conviction + the replica electio
 
 # Chapter 35 — Reading the source: cluster and Sentinel
 
-> **Reading the source · 2.5 h.** Covers Sentinel too, which you need for chapter 37.
+> ### What to do with this chapter
+> **Read the real Redis source**, following the tour here. No code of your own.
+>
+> **Time:** 2.5 h · **Before you start:** Chapter 34.
+>
+> **You're done when:** You can name the three gates on granting a failover vote.
+
 
 ## Cluster & Sentinel (2.5 h)
 
@@ -2263,7 +2435,13 @@ What you steal: `getNodeByQuery` logic; PFAIL/FAIL conviction rules; election ga
 
 # Chapter 36 — Build: cluster — the second wall
 
-> **Build · ~55 h.** Prerequisites: chapters 34, 35, and a working chapter 30. The second wall.
+> ### What to do with this chapter
+> **Build it.** ~55 h of code. The second wall.
+>
+> **Time:** 55 h · **Before you start:** Chapters 34, 35, and a working chapter 30.
+>
+> **You're done when:** Six nodes, `kill -9` a master, automatic failover, and `redis-cli -c` follows redirects throughout.
+
 
 **Goal**: slots, redirects, live resharding, gossip membership, PFAIL→FAIL conviction, replica failover with epochs. Ch. 12 + ch. 35 are the spec. Wire format is *yours* (JSON or your own binary — logic over bytes); everything else is the real protocol.
 
@@ -2309,13 +2487,18 @@ High availability, the operational surface, and the à-la-carte menu of everythi
 
 # Chapter 37 — Sentinel
 
-> **Concept · 2 h.** Safe to skip until you reach the chapter 39 menu.
-
-> ### 📚 Read alongside — 2 h
-> | | Resource | Time |
-> |---|---|---|
-> | **[CORE]** | Redis docs: "High availability with Redis Sentinel" — `redis.io/topics/sentinel`; full read; the "consistency under partitions" example especially | 1 h |
-> | **[USE]** | `sentinel.c`: `sentinelCheckObjectivelyDown`, `sentinelStartFailover`, and the failover state machine around `sentinelFailoverStateMachine` | 45 min |
+> ### What to do with this chapter
+> **Read it.** No code.
+>
+> **Time:** 2 h · **Before you start:** Chapter 36.
+>
+> **You're done when:** You can explain SDOWN versus ODOWN and why acting needs a majority.
+>
+> ### 📚 Required reading for this chapter
+> | Read this | Time |
+> |---|---|
+> | Redis docs: "High availability with Redis Sentinel" — `redis.io/topics/sentinel`; full read; the "consistency under partitions" example especially | 1 h |
+> | `sentinel.c`: `sentinelCheckObjectivelyDown`, `sentinelStartFailover`, and the failover state machine around `sentinelFailoverStateMachine` | 45 min |
 
 Sentinel is the HA layer for non-cluster Redis: N sentinel processes (run ≥3, odd) monitor masters, agree on failure, and orchestrate promotion. It is a *separate process* reusing the redis binary (`redis-sentinel`), and it is ch. 39 stretch — but read this now, because it completes the replication story and contrasts beautifully with ConsulMe.
 
@@ -2355,7 +2538,13 @@ Not consensus over data — only over *who is master*; the data-loss windows of 
 
 # Chapter 38 — Production-grade concerns
 
-> **Concept + build · 17 h.** Skim §38.2 (limits) as early as chapter 7 — several are cheaper to design in than to retrofit.
+> ### What to do with this chapter
+> **Read it, then harden your server** against the checklist. Roughly 2 h reading, 15 h of work.
+>
+> **Time:** 17 h · **Before you start:** Chapter 37.
+>
+> **You're done when:** Metrics, every limit in §38.2, and the chaos script are all in place.
+
 
 Do these during ch. 39, but *read* now — several change earlier designs cheaply.
 
@@ -2391,7 +2580,13 @@ Full registry: every config has {name, type, default, validator, dynamic?, apply
 
 # Chapter 39 — Build: the stretch menu
 
-> **Build · à la carte.** Prerequisites: everything. Pick rows, not the whole menu.
+> ### What to do with this chapter
+> **Build whichever items you want.** Nothing here is required.
+>
+> **Time:** à la carte · **Before you start:** Everything above.
+>
+> **You're done when:** N/A — pick items and stop when you want to.
+
 
 Pick à la carte; each is independent. Rough effort attached.
 
