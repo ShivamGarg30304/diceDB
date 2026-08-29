@@ -10,60 +10,44 @@ Reference source: `~/Code/Learning/redis` @ commit `d22066d09` (version 8.9.241)
 
 ## How to use this document
 
-**There are exactly two kinds of numbered thing in this book: Parts and Chapters.** Chapters run 1 to 39 in the order you work through them — read chapter 1, then 2, then 3, and so on to the end. There is no separate track of "stages" or "phases" to cross-reference; a chapter that says *Build* is a chapter you build, and it sits exactly where it belongs in the sequence.
+Chapters run 1 to 48 in order. Read chapter 1, then 2, then 3, to the end.
 
-Chapters come in three kinds, and every chapter opens with a **"What to do with this chapter"** box telling you which kind it is, how long it takes, what you must have finished first, and how you know you're done. Read that box before anything else.
+**The target is a replacement.** When you finish chapter 48, a client library, a monitoring exporter, and `redis-cli` should be unable to tell DiceMe from `redis-server` — that is the acceptance criterion the whole book is arranged around, and chapter 48 is where somebody else's test suite decides whether you met it. The one thing that stays out of reach is the C modules ABI (§48.4 explains why, and what it costs).
 
-| Kind | What you actually do |
-|---|---|
-| **Read it** | Read the chapter, plus the short **Required reading** list at the top. Write no code. |
-| **Reading the source** | Follow the guided tour through the real code with the repo open. Write no code of your own. |
-| **Build it** | Write the code. The chapter is the spec, and it ends with a done-when script that proves it works. |
-
-**There is no optional reading.** Everything in a chapter's Required-reading box is required and has been kept short on purpose. Extra depth lives in Appendix D, and you go there only if you want to.
-
-So a typical arc is: read two concept chapters, take the source tour, then build. Part II is the pattern in miniature — event loop, RESP, source tour, setup, build.
-
-The eight parts:
+The nine parts:
 
 | Part | Chapters | What you have when it's done |
 |---|---|---|
 | **I — Orientation** | 1–2 | The one architectural decision the whole project rests on |
-| **II — The server core** | 3–7 | A server `redis-benchmark` can hammer without falling over |
-| **III — Keyspace, strings, expiry** | 8–13 | Strings and key management, byte-identical to real Redis |
-| **IV — Data structures and collections** | 14–19 | dict, listpack, skiplist, intset, quicklist — and lists/hashes/sets/zsets on top |
-| **V — Persistence and eviction** | 20–26 | Survives `kill -9`; evicts sensibly when memory fills |
+| **II — The server core** | 3–7 | A server `redis-benchmark` can hammer without falling over, speaking RESP2 and RESP3 |
+| **III — Keyspace, strings, expiry** | 8–13 | Strings, key management and all 16 databases, byte-identical to real Redis |
+| **IV — Data structures and collections** | 14–19 | dict, listpack, skiplist, intset, quicklist, rax — and lists/hashes/sets/zsets on top |
+| **V — Persistence and eviction** | 20–26 | Survives `kill -9`; loads and writes RDB files real Redis accepts; evicts sensibly when memory fills |
 | **VI — Replication** | 27–30 | A replica that partial-resyncs after a dropped link |
 | **VII — Transactions and cluster** | 31–36 | MULTI/WATCH, blocking, pub/sub, and a 6-node cluster that fails over |
-| **VIII — Production** | 37–39 | Sentinel, the operational surface, and the à-la-carte extras |
+| **VIII — Production** | 37–38 | Sentinel's design, the operational and observability surface |
+| **IX — The rest of real Redis** | 39–48 | Scripting, streams, bitmaps/HLL/geo, Sentinel, ACLs and TLS — then the compatibility sweep that proves it |
 
-Appendices A–I are lookup, not sequence: glossary, command surface, source index, reading list, self-tests, bug catalogue, cookbook, answer key, and a per-chapter resource list.
+Appendices A–I are lookup: glossary, command surface, source index, reading list, self-tests, bug catalogue, cookbook, answer key, per-chapter resources.
 
-**Rules for using it:**
-
-1. **Go in chapter order.** The chapters are already in working order — that is the whole design. If you're in chapter 20 wondering when you'll build something, look back: you built in 7, 11, 17 and 19.
-2. **Never read more than one chapter ahead of what you're building.** Reading about cluster failover while building the skiplist is procrastination that feels like studying.
-3. **Build the checkpoint every time one is specified.** The gap between "I read about approximate LRU" and "I watched my eviction pool delete the hottest key because the full-pool branch was backwards" (the audit's finding 3 — that bug is in your repo right now) is the entire difference between finishing this and abandoning it.
-4. **Answer the self-check questions out loud, from memory.** If you can't, you didn't learn it — reread. The questions are in each chapter and collected in Appendix E.
-5. **When stuck, the answer is almost always in the real source.** Appendix C maps every concept to its file.
-6. **Diff against real Redis constantly.** You have the real thing; `redis-server` on 6379, DiceMe on 7379, same commands to both, compare bytes. This is the single biggest advantage of this project over ConsulMe — the oracle is one process away. Build the diff harness in chapter 6 and never stop using it.
+**Diff against real Redis constantly.** You have the real thing: `redis-server` on 6379, DiceMe on 7379, same commands to both, compare bytes. The oracle is one process away, which no other from-scratch project of this size gets. Build the diff harness in chapter 6 and never stop using it.
 
 
 ## Prerequisites check
 
 You need, before starting:
 
-- **Go**: goroutines, channels, `select`, interfaces, `sync.Mutex`, slices/maps at the "append may reallocate" level, testing. You have this.
-- **Networking**: TCP sockets, non-blocking I/O. Your kqueue loop in `server/async_tcp.go` proves you have this.
+- **Go**: goroutines, channels, `select`, interfaces, `sync.Mutex`, slices/maps at the "append may reallocate" level, testing.
+- **Networking**: TCP sockets, non-blocking I/O.
 - **Command line**: `redis-cli`, `redis-benchmark`, `kill -9`, `hexdump -C`, reading logs.
 
-You do **not** need: prior database-internals knowledge, replication theory, or consensus. Redis deliberately avoids consensus almost everywhere — a design position you'll understand by Chapter 12.
+You do **not** need prior database-internals knowledge, replication theory, or consensus.
 
 ---
 
 ## The audit — what DiceMe is today
 
-This is a code review of your repo as it stands, written so that every finding becomes a lesson in a specific chapter. Nothing here is shaming — several of these bugs are *the classic bugs*, the ones this book exists to teach. The right response to this table is not "fix everything now"; it is "fix each one in the chapter that covers it, and understand why it was wrong."
+A code review of your repo as it stands. Every finding is fixed in a specific chapter — the "Fixed in" column — not now.
 
 ### What you have
 
@@ -80,7 +64,7 @@ This is a code review of your repo as it stands, written so that every finding b
 | `core/eviction.go`, `core/evictionpool.go` | Three strategies; 24-bit LRU clock with wraparound-aware idle time; 16-slot eviction pool. The real algorithm's skeleton. |
 | `core/aof.go` | AOF dump of the store as RESP `SET` commands. |
 | `storm/set/main.go` | 5-connection SET load generator. |
-| `monitoring/` | Prometheus + Grafana scaffolding — wired up in ch. 39 (§28.1). |
+| `monitoring/` | Prometheus + Grafana scaffolding — wired up in ch. 38 (§38.1). |
 
 That is a legitimate skeleton of chapters 7 and 11, plus previews of 23 and 26. You are not starting from zero; you're starting from ~15%.
 
@@ -115,7 +99,7 @@ Two things in the repo are **more right than they look**: the two-nibble `TypeEn
 
 ## The map
 
-Thirty-nine chapters, in order. **B** marks a build chapter, **S** a source-reading tour.
+Forty-eight chapters, in order. **B** marks a build chapter, **S** a source-reading tour.
 
 ```
 PART I    ORIENTATION
@@ -124,16 +108,16 @@ PART I    ORIENTATION
 
 PART II   THE SERVER CORE
    3      The event loop                                    5 h
-   4      RESP: the wire protocol                           4 h
+   4      RESP2 and RESP3: the wire protocol                4 h
    5   S  Reading the source: the server core               7 h
    6      Project setup and conventions                     5 h
-   7   B  Build: the server core                           25 h
+   7   B  Build: the server core                           31 h
 
 PART III  KEYSPACE, STRINGS, AND EXPIRY
    8      The object model and the keyspace                 2 h
    9      Expiration                                        2 h
   10   S  Reading the source: keyspace and strings          3 h
-  11   B  Build: keyspace, strings, expiry                 35 h   ← first milestone
+  11   B  Build: keyspace, strings, expiry                 41 h   ← first milestone
   12      The big picture                                   2 h
   13      Request lifecycles, traced                        2 h
 
@@ -141,18 +125,18 @@ PART IV   DATA STRUCTURES AND COLLECTIONS
   14      Memory                                            3 h
   15      The data structures you will build               12 h
   16   S  Reading the source: the dict                      2 h
-  17   B  Build: the data-structure libraries              45 h
+  17   B  Build: the data-structure libraries              55 h
   18   S  Reading the source: the collections             2.5 h
-  19   B  Build: the collections                           40 h   ← genuinely useful
+  19   B  Build: the collections                           48 h   ← genuinely useful
 
 PART V    PERSISTENCE AND EVICTION
   20      Persistence: RDB and AOF                          4 h
   21      Crash safety: the filesystem contract             2 h
   22   S  Reading the source: RDB and AOF                   4 h
-  23   B  Build: persistence                               45 h   ← no fork in Go
+  23   B  Build: persistence                               53 h   ← no fork in Go
   24      Eviction                                          2 h
   25   S  Reading the source: eviction                    1.5 h
-  26   B  Build: maxmemory and eviction                    20 h
+  26   B  Build: maxmemory and eviction                    23 h
 
 PART VI   REPLICATION
   27      Replication                                       5 h
@@ -161,20 +145,31 @@ PART VI   REPLICATION
   30   B  Build: replication                               55 h   ← the wall
 
 PART VII  TRANSACTIONS AND CLUSTER
-  31      Transactions, blocking, pub/sub, scripting        3 h
+  31      Transactions, blocking, pub/sub                   3 h
   32   S  Reading the source: MULTI, blocking, pub/sub    1.5 h
-  33   B  Build: transactions, blocking, pub/sub           25 h
+  33   B  Build: transactions, blocking, pub/sub           27 h
   34      Cluster                                           4 h
   35   S  Reading the source: cluster and Sentinel        2.5 h
-  36   B  Build: cluster                                   55 h   ← the second wall
+  36   B  Build: cluster                                   59 h   ← the second wall
 
 PART VIII PRODUCTION
   37      Sentinel                                          2 h
   38      Production-grade concerns                        17 h
-  39   B  Build: the stretch menu                      à la carte
+
+PART IX   THE REST OF REAL REDIS
+  39      Scripting: Lua and Functions                      3 h
+  40   B  Build: scripting                                 30 h
+  41      Streams                                           3 h
+  42   B  Build: streams                                   35 h
+  43      Bitmaps, HyperLogLog, and geospatial              3 h
+  44   B  Build: bitmaps, HyperLogLog, geospatial          30 h
+  45   B  Build: Sentinel                                  25 h
+  46      Security: AUTH, ACLs, and TLS                     2 h
+  47   B  Build: the security and admin surface            25 h
+  48   B  Build: the compatibility sweep                   45 h   ← the acceptance test
 ```
 
-**Total ≈455 h** — about 4.5 months at 25 h/week, or 11 at 10 h/week. Chapter 39 is optional and uncounted.
+**Total ≈700 h** — about 7 months at 25 h/week, or 17 at 10 h/week. Nothing in it is optional; the parts that were optional in earlier editions of this plan are exactly the parts that separate "a Redis-like server" from "a Redis".
 
 
 
@@ -186,30 +181,31 @@ Hours are **focused working hours**, not elapsed time. The ratios matter more th
 |---|---|---|---|---|
 | Front matter + "How to study" | — | 1 h | — | **1 h** |
 | **I — Orientation** | 1–2 | 4 h | — | **4 h** |
-| **II — The server core** | 3–7 | 16 h | 30 h | **46 h** |
-| **III — Keyspace, strings, expiry** | 8–13 | 11 h | 35 h | **46 h** |
-| **IV — Data structures and collections** | 14–19 | 9 h | 93 h | **102 h** |
-| **V — Persistence and eviction** | 20–26 | 13 h | 65 h | **78 h** |
+| **II — The server core** | 3–7 | 16 h | 36 h | **52 h** |
+| **III — Keyspace, strings, expiry** | 8–13 | 11 h | 41 h | **52 h** |
+| **IV — Data structures and collections** | 14–19 | 9 h | 111 h | **120 h** |
+| **V — Persistence and eviction** | 20–26 | 13 h | 76 h | **89 h** |
 | **VI — Replication** | 27–30 | 10 h | 55 h | **65 h** |
-| **VII — Transactions and cluster** | 31–36 | 11 h | 80 h | **91 h** |
-| **VIII — Production** | 37–39 | 4 h | 15 h | **19 h** |
+| **VII — Transactions and cluster** | 31–36 | 11 h | 86 h | **97 h** |
+| **VIII — Production** | 37–38 | 4 h | 15 h | **19 h** |
+| **IX — The rest of real Redis** | 39–48 | 11 h | 190 h | **201 h** |
 | Appendices A–I | — | lookup | — | — |
 | | | | | |
-| **TOTAL** | 1–39 | ≈80 h | ≈375 h | **≈455 h** |
+| **TOTAL** | 1–48 | ≈90 h | ≈610 h | **≈700 h** |
 
-≈4.5 months at 25 h/week; ≈11 months at 10 h/week. Chapter 39 is à la carte and not counted.
+≈7 months at 25 h/week; ≈17 months at 10 h/week.
 
 **Where the time actually goes:**
 
-- **Chapters 30 and 36 — replication and cluster — are 110 h**, a quarter of the project, and the two subsystems almost every "build Redis" tutorial skips. They are also what interviewers actually ask about.
-- **Chapter 23, persistence, is 45 h** and *harder in Go than in C*, because you cannot `fork()`. Snapshot-while-serving without copy-on-write is the most original engineering problem here (§20.5).
-- **Chapter 17, the data-structure libraries, is 45 h** — the computer-science core. Everything after chapter 19 is systems engineering.
-- Reading is under a fifth of total time, and a third of *that* is the source tours, not prose. This is a building project.
+- **Part IX is 201 h**, nearly a third of the project, and it is entirely made of things a "build your own Redis" project normally declares out of scope. That is the point: a replacement is judged on its worst-supported command, not its best.
+- **Chapters 30 and 36 — replication and cluster — are 114 h**, and they are the two subsystems almost every tutorial skips. They are also what interviewers actually ask about.
+- **Chapter 23, persistence, is 53 h** and *harder in Go than in C*, because you cannot `fork()`. Snapshot-while-serving without copy-on-write is the most original engineering problem here (§20.5).
+- **Chapter 17, the data-structure libraries, is 55 h** — the computer-science core. Everything after chapter 19 is systems engineering.
+- **Chapter 48, the compatibility sweep, is 45 h** and will feel like the least glamorous work in the book. It is the only chapter that can tell you whether the previous 655 hours produced a replacement or an homage.
+- Reading is under a seventh of total time, and a third of *that* is the source tours, not prose. This is a building project.
 
 
 ## Checkpoint demos
-
-Milestones you can actually show someone. Useful for morale, and for interviews.
 
 | After chapter | Demo |
 |---|---|
@@ -221,15 +217,17 @@ Milestones you can actually show someone. Useful for morale, and for interviews.
 | **30** | Writes on master appear on replica in <10 ms; cut the link mid-stream, reconnect, **partial** resync — the logs prove no RDB was transferred |
 | **33** | Two clients race `WATCH`/`MULTI`/`EXEC`, exactly one wins; `BLPOP` wakes the instant another client pushes |
 | **36** | 6-node cluster (3 masters + 3 replicas), `kill -9` a master, automatic failover, `redis-cli -c` follows redirects transparently |
+| **40** | A distributed-lock Lua script from a real library (`redlock`, or your own rate limiter) runs unmodified; a runaway script is killable |
+| **42** | A consumer-group job queue: three workers, kill one mid-work, `XAUTOCLAIM` reassigns its pending entries, nothing is lost |
+| **44** | A HyperLogLog written by DiceMe is counted correctly by real `redis-server` after `DUMP`/`RESTORE` |
+| **45** | Three sentinels, `kill -9` the master, a client that only knows the sentinels keeps writing |
+| **47** | An ACL-restricted user is denied by command, by key pattern, and by channel — with byte-exact error texts; replication runs over TLS |
+| **48** | `go-redis`, `redis-py` and `node-redis` run their own integration suites against DiceMe and pass; `make compat` prints the scoreboard |
 
-**If you only have 150 hours**, the minimum path to genuinely understanding Redis is chapters 1–13 (≈97 h) plus the dict and skiplist from chapter 17 (≈20 h) and persistence in chapter 23 (45 h) — which already exceeds it. So the honest 150-hour version stops after chapter 23 with only strings, hashes and zsets, and replaces the replication and cluster *builds* with their concept and source chapters (27, 29, 34, 35) plus operating the real thing. You lose the two deepest lessons but keep a durable, correct, single-node Redis. Your call — just make it deliberately, not by drifting.
+**On shortening the path.** You can stop at any checkpoint and have something real — chapter 23 leaves you a durable single-node cache, chapter 33 a genuinely useful one. But this book's target is a replacement, and a replacement has no partial credit: the first client library that sends `HELLO 3` or `EVAL` against a server that lacks them has found the edge. If you cut, cut deliberately, write down what you cut, and stop calling the result a replacement.
 
 
-## How to study this material
-
-You've built one round of DiceMe already, so you know the loop: read a little, build, get confused, read the source. These techniques sharpen that loop.
-
-### Reading C source when you write Go
+## Reading C source when you write Go
 
 The Redis codebase is famously readable C, but three idioms trip up Go programmers:
 
@@ -237,51 +235,26 @@ The Redis codebase is famously readable C, but three idioms trip up Go programme
 2. **Flags packed into ints.** `CLIENT_MULTI | CLIENT_DIRTY_CAS` — grep the `#define` blocks at the top of `server.h` whenever you meet a constant. Keep `server.h` open in a tab permanently; it is the schema of the entire program: `struct client`, `struct redisDb`, `struct redisServer` are the three types everything else orbits.
 3. **Error handling by return code + `goto err`.** Translate mentally to `if err != nil` and move on; don't study the cleanup ladders.
 
-### The three-pass source session
-
-Every Part IV session, same method:
-
-1. **Skim (15 min).** Function signatures and comments only, in the listed files. Goal: what lives here.
-2. **Trace (1 h).** Follow one concrete command through the one entry point the session names, writing the call chain by hand: `readQueryFromClient → processInputBuffer → processCommand → call → setCommand → setGenericCommand`.
-3. **Reconstruct (30 min).** Close the source. Write the mechanism from memory as pseudocode. The gaps are your reading list for pass two.
-
-### Note-taking that works here
-
-Keep one `NOTES.md` per stage in the DiceMe repo. Three sections:
-
-- **Mechanism** — how it works, your own words, no quoting.
-- **Why** — the failure it prevents or the benchmark it wins. If you can't write this, you memorized rather than understood.
-- **Open questions** — literally a list. Revisit at each stage's end; you'll answer most yourself.
-
-### When you're stuck
+## When you're stuck
 
 In order — do not skip to the bottom:
 
 1. **Re-read the self-check questions** for that chapter. They're diagnostic: the one you can't answer names your gap.
-2. **Ask the oracle.** Run the same command sequence against real Redis and diff output byte-for-byte (§17.4). Half your bugs are semantics you guessed instead of checked.
+2. **Ask the oracle.** Run the same command sequence against real Redis and diff output byte-for-byte (§6.4). Half your bugs are semantics you guessed instead of checked.
 3. **Read the real Redis test** for that behavior — `tests/unit/` and `tests/integration/` in the redis repo. `tests/unit/expire.tcl` is a specification of expiry disguised as a test file; `tests/integration/replication-psync.tcl` is the same for partial resync.
 4. **Read the real implementation** at the anchor in Appendix C.
-5. **Add logging and run it.** Replication and cluster bugs are almost never reasoned out from source; they're observed. See ch. 30.
-6. **Ask.** Come with: what you expected, what happened, what you already tried.
+5. **Add logging and run it.** Replication and cluster bugs are almost never reasoned out from source; they're observed. See ch. 28.
 
-### Pacing rules
+Timebox rabbit holes to two hours: write the question down, move on, come back.
 
-- **One stage at a time.**
-- **Never more than 3 days without running code.**
-- **Timebox rabbit holes to 2 hours.** Write the question in `NOTES.md`, move on, come back.
-- **Take the checkpoints.** After ch. 23 you have a durable, genuinely useful cache. Tag it `v0.1`, update the README, show someone. Momentum is a resource and chapter 30 will consume a lot of it.
+## What this book deliberately does *not* cover
 
-### What this book deliberately does *not* cover
+Being explicit so you know the edges. This list is short on purpose: everything else that a client can observe is in scope, because the target is a replacement.
 
-Being explicit so you know the edges:
-
-- **Modules API** (`module.c`) — a plugin ABI, not database internals.
-- **Query engine / vector search / JSON / TimeSeries** — modules, separate products.
-- **TLS** (`tls.c`) — transport plumbing; bolt on `crypto/tls` at the very end if you want; it teaches Go, not Redis.
-- **ACLs in depth** (`acl.c`) — sketched in ch. 39 only.
-- **The 8.x internals as a build target** — `kvstore`, `ebuckets`, `kvobj`, `client_comp.c`, `defrag.c`. You read them for contrast; you build the classic model.
+- **The modules ABI** (`module.c`) — `MODULE LOAD` takes a C shared object compiled against Redis's internal ABI. A Go server cannot load one, at any effort level. That rules out RedisJSON, RediSearch, RedisTimeSeries and RedisBloom, and it is the one genuine, permanent gap (§48.4).
+- **A byte-compatible cluster bus.** You build the cluster protocol's logic over your own node-to-node encoding (ch. 36), so an all-DiceMe cluster is complete but a *mixed* DiceMe/Redis cluster is not. Clients never speak the bus, so this does not affect a client-facing replacement — but §48.4 makes you write it down.
+- **The 8.x internals as a build target** — `kvstore`, `ebuckets`, `kvobj`, `client_comp.c`, `defrag.c`. You read them for contrast; you build the classic model, which has identical observable semantics.
 - **io_uring and platform-exotic I/O** — ch. 3 covers kqueue/epoll conceptually; you build on Go's netpoller.
-- **Client-side caching (tracking)** — mentioned in ch. 39; a weekend feature after everything else works.
 
 ---
 ---
@@ -294,14 +267,11 @@ Why this system is shaped the way it is, and the one architectural decision you 
 
 # Chapter 1 — What Redis actually is
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 2 h · **Before you start:** Nothing.
 >
 > **You're done when:** You can answer the chapter-1 self-check from memory.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | Redis docs: "Introduction to Redis" (`redis.io/docs`), then the command pages `redis.io/commands/{set,expire,lpush,zadd}` — read the **complexity** line on each | 45 min |
@@ -348,14 +318,17 @@ Real Redis is production-grade because of what happens at the edges, not the cen
 
 | Edge | Chapter |
 |---|---|
-| A key expires *during* a read — who deletes it, and what may a **replica** do differently? | 7 |
-| Memory is full — which key dies, and how do you choose without scanning everything? | 8 |
-| `kill -9` mid-write — what's on disk, what loads at boot, exactly how much is lost? | 9 |
-| The replica's TCP link drops for 3 seconds — full resync or continue from an offset? | 10 |
-| The master dies — who notices, who decides, who promotes, who un-promotes the old master when it returns? | 11–12 |
-| A client WATCHes a key that expires before EXEC — does the transaction run? | 13 |
-| A client blocks on BLPOP and another pushes — exactly when, in the event loop, does it wake? | 13 |
-| A slow client can't drain replies as fast as you produce them — whose memory fills, and what pops first? | 28 |
+| A key expires *during* a read — who deletes it, and what may a **replica** do differently? | 9 |
+| Memory is full — which key dies, and how do you choose without scanning everything? | 24 |
+| `kill -9` mid-write — what's on disk, what loads at boot, exactly how much is lost? | 20–21 |
+| The replica's TCP link drops for 3 seconds — full resync or continue from an offset? | 27 |
+| The master dies — who notices, who decides, who promotes, who un-promotes the old master when it returns? | 34, 37 |
+| A client WATCHes a key that expires before EXEC — does the transaction run? | 31 |
+| A client blocks on BLPOP and another pushes — exactly when, in the event loop, does it wake? | 31 |
+| A slow client can't drain replies as fast as you produce them — whose memory fills, and what pops first? | 38 |
+| A script loops forever — who can still be served, and what may they send? | 39 |
+| A consumer of a stream group dies holding ten unacknowledged entries — who gets them, and when? | 41 |
+| A user is allowed `GET` but not on this key — where in dispatch is that decided? | 46 |
 
 Every one of these has a precise, tested answer in the real source. Building to those answers — not to "seems to work" — is the project.
 
@@ -393,14 +366,11 @@ Knowing the refusals prevents accidentally building them:
 
 # Chapter 2 — Threads in a "single-threaded" server
 
-> ### What to do with this chapter
-> **Read it, then write down your decision.** No production code, but §2.4 is a choice you must actually make and record.
->
 > **Time:** 2 h · **Before you start:** Chapter 1.
 >
 > **You're done when:** You have written the §2.4 architecture decision in your own words in `NOTES.md`. Everything you build later assumes it.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | `bio.c` — all of it (~350 lines): the job queue Redis trusts with fsync | 45 min |
@@ -433,7 +403,7 @@ Two generations of this feature exist, and knowing both is the point.
 
 The invariant survives both generations, and it's the one to keep: **command execution is still serial on the main thread.** What changed is only who does the socket and parsing work, and how ownership is handed over — which is exactly the §2.1 rule (threads receive ownership through a queue; they never share mutable structures) applied harder.
 
-ch. 39 stretch in Go: your connection goroutines *already are* io-threads (parsing happens off-engine, in parallel, by construction) — you got the whole feature for free from the architecture. Say so in the README, and if you want the 8.x lesson too, add the prefetch idea: the connection goroutine can look up the command's keys and touch them before handing the command to the engine.
+In Go: your connection goroutines *already are* io-threads (parsing happens off-engine, in parallel, by construction) — you got the whole feature for free from the architecture. Say so in the README, and if you want the 8.x lesson too, add the prefetch idea: the connection goroutine can look up the command's keys and touch them before handing the command to the engine.
 
 ## 2.4 Choosing DiceMe's concurrency model — the decision record
 
@@ -467,14 +437,11 @@ Everything between the socket and the command table. You finish this part with a
 
 # Chapter 3 — The event loop
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 5 h · **Before you start:** Chapter 2.
 >
 > **You're done when:** You can say where in the loop a command executes and where its reply reaches the socket.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | `ae.c` + `ae.h` — the whole thing; the cleanest event loop you'll ever read. Entry: `aeMain`, `aeProcessEvents`. | 1 h |
@@ -571,16 +538,15 @@ The subtle point: **command execution happens inside the file-event handler**, s
 
 ---
 
-# Chapter 4 — RESP: the wire protocol
+# Chapter 4 — RESP2 and RESP3: the wire protocol
 
-> ### What to do with this chapter
-> **Read it.** No code — you write the parser in chapter 7.
+> You write the parser and both serializers in chapter 7.
 >
 > **Time:** 4 h · **Before you start:** Chapter 3.
 >
-> **You're done when:** You can describe exactly what your parser must do with a half-received command.
+> **You're done when:** You can describe exactly what your parser must do with a half-received command, and why RESP3 is a chapter-7 concern rather than a later one.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | Redis docs: "RESP protocol spec" — `redis.io/topics/protocol`; RESP2 carefully, RESP3 skim | 1 h |
@@ -644,9 +610,9 @@ In Go: a per-connection writer (goroutine draining a channel, or a mutex-guarded
 
 A client sends N commands without awaiting replies; the server executes in order, replies in order. Nothing special is needed *if* your parser loops (§4.3) and your writer preserves order. The win is pure latency arithmetic: 10,000 sequential SETs at 0.5 ms RTT = 5 s; batches of 100 = 50 ms. `redis-benchmark -P 16` is your standard load from ch. 7 onward — today it kills DiceMe inside a second (audit #2). Make "survives `-P 16` for 60 s" a ch. 7 done-when.
 
-## 4.7 RESP3 in one box (build in ch. 39, know about now)
+## 4.7 RESP3 (you build it in ch. 7)
 
-`HELLO 3` upgrades the connection. Adds: typed maps (`%`), sets (`~`), doubles (`,`), booleans (`#`), big numbers (`(`), verbatim strings (`=`), one unified null (`_`), and **push frames** (`>`) — server-initiated messages (pub/sub, invalidation) that interleave with replies. RESP2 pub/sub fakes push with arrays; RESP3 makes it a frame type. Design your reply API now so this slots in later: commands should emit *logical* replies ("map", "double", "ok") and a per-connection serializer renders RESP2 or RESP3. If your eval functions return raw `[]byte` forever (as `core/eval.go` does today), RESP3 becomes a rewrite instead of a serializer.
+`HELLO 3` upgrades the connection. Adds: typed maps (`%`), sets (`~`), doubles (`,`), booleans (`#`), big numbers (`(`), verbatim strings (`=`), one unified null (`_`), and **push frames** (`>`) — server-initiated messages (pub/sub, invalidation) that interleave with replies. RESP2 pub/sub fakes push with arrays; RESP3 makes it a frame type. **Build both serializers in chapter 7**, not later. Modern client libraries — redis-py 5, Lettuce, node-redis v4, go-redis — negotiate RESP3 on connect by default, so a server that only speaks RESP2 fails the very first handshake of a compatibility test. The design that makes this cheap: commands emit *logical* replies ("map", "double", "ok") and a per-connection serializer renders RESP2 or RESP3. If your eval functions return raw `[]byte` (as `core/eval.go` does today), RESP3 becomes a rewrite instead of a switch statement. Push frames arrive with pub/sub in ch. 33 and client tracking in ch. 48; the frame *type* is built here.
 
 ## Self-check — Chapter 4
 
@@ -661,9 +627,6 @@ A client sends N commands without awaiting replies; the server executes in order
 
 # Chapter 5 — Reading the source: the server core
 
-> ### What to do with this chapter
-> **Read the real Redis source**, following the five tours here. No code of your own.
->
 > **Time:** 7 h · **Before you start:** Chapters 2, 3, 4.
 >
 > **You're done when:** You have run real Redis, and written down the call chain from socket to command by hand.
@@ -708,9 +671,6 @@ What you steal: the gate sequence for your dispatcher; `(reply, effect)` propaga
 
 # Chapter 6 — Project setup and conventions
 
-> ### What to do with this chapter
-> **Set up the project and build the diff harness.** Tooling, not features.
->
 > **Time:** 5 h · **Before you start:** Chapter 5.
 >
 > **You're done when:** `tests/harness/diff.sh` can run a command list against real Redis and DiceMe and show you a diff.
@@ -718,7 +678,7 @@ What you steal: the gate sequence for your dispatcher; `(reply, effect)` propaga
 
 ## 6.1 Rules
 
-1. **Zero runtime dependencies** in the server (stdlib only; `gopher-lua` allowed for ch. 39 scripting; test-only deps fine). The point is building it.
+1. **Zero runtime dependencies** in the server (stdlib only; one exception, `gopher-lua`, arrives in ch. 40 for scripting; test-only deps fine). The point is building it.
 2. **Every build chapter ends green**: its done-when script passes, `go test ./...` passes, `go vet` clean, and every *earlier* build chapter's done-when still passes (keep them as `make check-ch7`, `check-ch11`, … — regressions across chapters are the norm, not the exception).
 3. **Error texts byte-identical to real Redis.** The diff harness enforces it.
 4. **No eval touches storage directly** — everything through the keyspace API (§8.3). Enforced by review, or by making the store package-private with an exported API surface.
@@ -782,10 +742,7 @@ Plus a Go mode for pipelining/blocking cases (two `net.Conn`s, raw RESP bytes bo
 
 # Chapter 7 — Build: the server core, rebuilt
 
-> ### What to do with this chapter
-> **Build it.** ~25 h of code.
->
-> **Time:** 25 h · **Before you start:** Chapters 2, 3, 4, 5, 6.
+> **Time:** 31 h · **Before you start:** Chapters 2, 3, 4, 5, 6.
 >
 > **You're done when:** The done-when checks in this chapter pass: `redis-benchmark -P 16` runs clean, the RESP fuzzer finds no panic, and an idle server still expires keys.
 
@@ -794,7 +751,9 @@ Plus a Go mode for pipelining/blocking cases (two `net.Conn`s, raw RESP bytes bo
 
 ## 7.1 The pieces
 
-**`resp` package.** Incremental decoder per §4.3: `Decoder{buf []byte; ...}` with `Feed(data)` and `Next() (args [][]byte, err error)` returning `ErrIncomplete` freely. Port your `readX` functions' logic; kill their panics; add `-1` lengths, limits, and inline commands. Serializer side: keep `Encode`-style helpers but emit into a `*bytes.Buffer`/writer, and add the logical-reply layer (§4.7): `ReplyOK/ReplyErr/ReplyBulk/ReplyInt/ReplyArray/ReplyNil` methods on a `RespWriter` — evals call these, never `fmt.Sprintf` RESP by hand.
+**`resp` package.** Incremental decoder per §4.3: `Decoder{buf []byte; ...}` with `Feed(data)` and `Next() (args [][]byte, err error)` returning `ErrIncomplete` freely. Port your `readX` functions' logic; kill their panics; add `-1` lengths, limits, and inline commands.
+
+Serializer side, and this is the part that pays for itself three times: build the **logical-reply layer** (§4.7) and *two* renderers. Evals call `ReplyOK / ReplyErr / ReplyBulk / ReplyInt / ReplyDouble / ReplyBool / ReplyNil / ReplyArray / ReplyMap / ReplySet / ReplyPush` on a `RespWriter` and never format RESP by hand; the writer holds the connection's protocol version and emits RESP2 or RESP3 accordingly (a RESP3 map degrades to a flat RESP2 array, a double to a bulk string, a bool to `:0`/`:1`, a null to `$-1` — the degradation table *is* the RESP2 renderer). `HELLO [2|3] [AUTH u p] [SETNAME n]` flips the version and returns the server map. Doing this now costs about six hours; doing it in chapter 48 costs a rewrite of every eval function you will have written by then, which is all of them.
 
 **`Client`.** conn, decoder, reply writer + output channel, id, name, flags (bitfield, like you did TypeEncoding), createdAt/lastCmd — plus the fields you *know* are coming (MULTI queue, watched list, blocked state) declared but unused. The fake-client constructor (`NewDetachedClient()`) exists now, tested by feeding it commands directly — AOF-load and replication plug into it later.
 
@@ -829,9 +788,9 @@ Dispatch gates in `processCommand` order (ch. 5): unknown → `-ERR unknown comm
 
 **Connection lifecycle.** Accept goroutine (maxclients gate) → per-conn: reader goroutine (read→Feed→Next loop→engine channel) + writer (drain reply channel→`bufio.Writer`→flush per batch, partial-write-safe by construction). Disconnect cleanup: deregister everything (a function that grows all project long — get its shape right now). Graceful shutdown: signal → stop accepting → engine drains → connections closed → exit; second signal = immediate. `wg` accounting fixed (audit #15).
 
-**Config.** Parse a minimal `dice.conf` (key value lines, `#` comments — Redis's format) + flags override + defaults: port, maxclients, proto-max-bulk-len, appendonly(later), save(later)… Registry pattern so `CONFIG GET/SET` (ch. 11) is a map iteration, and configs are declared once with type+default+validator.
+**Config.** Parse a minimal `dice.conf` (key value lines, `#` comments — Redis's format) + flags override + defaults: port, bind, unixsocket, tcp-keepalive, timeout, maxclients, proto-max-bulk-len, appendonly(later), save(later)… `unixsocket` costs four lines here (`net.Listen("unix", …)` behind the same accept loop) and is standard in every colocated deployment, so do it now rather than discovering it in ch. 48. Registry pattern so `CONFIG GET/SET` (ch. 11) is a map iteration, and configs are declared once with type+default+validator.
 
-**Commands carried over**: PING, ECHO (new, trivial), SET/GET/DEL/TTL/EXPIRE/etc. keep working through the new path — port the evals as-is; ch. 11 rewrites their semantics. Drop LRU and SLEEP from the table; re-add SLEEP as `DEBUG SLEEP` (build `DEBUG` now with SLEEP + JMAP-ish stub — you'll grow it every build chapter).
+**Commands carried over**: PING, ECHO (new, trivial), QUIT, HELLO (2 and 3 — see the serializer above), SET/GET/DEL/TTL/EXPIRE/etc. keep working through the new path — port the evals as-is; ch. 11 rewrites their semantics. Drop LRU and SLEEP from the table; re-add SLEEP as `DEBUG SLEEP` (build `DEBUG` now with SLEEP + JMAP-ish stub — you'll grow it every build chapter).
 
 ## 7.2 Done-when
 
@@ -840,6 +799,8 @@ redis-cli -p 7379 PING                          # PONG
 redis-cli -p 7379 FOOBAR a b                    # ERR unknown command 'FOOBAR', …
 redis-benchmark -p 7379 -q -n 100000 -P 16 -t ping,set,get   # clean, 0 errors — audit #2 dead
 printf 'PING\r\n' | nc localhost 7379           # inline works
+redis-cli -3 -p 7379 HELLO 3                    # RESP3 map reply; diff its shape against real redis
+redis-cli -3 -p 7379 PING                       # the whole session speaks RESP3 afterwards
 # partial-frame torture: send a SET split into 1-byte writes with 10ms gaps — correct reply
 go test -fuzz=FuzzDecode -fuzztime=60s ./core/resp/          # no panics — audit #1 dead
 # 1000 concurrent clients (storm) for 60s; kill client processes randomly; server RSS stable, no goroutine leak (pprof)
@@ -867,14 +828,11 @@ The object model, the keyspace choke point, and the expiry contract — then the
 
 # Chapter 8 — The object model and the keyspace
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 2 h · **Before you start:** Chapter 7.
 >
 > **You're done when:** You can list the five cross-cutting concerns that hang off the keyspace write path.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | `object.c`: `createObject`, `tryObjectEncoding`, `objectCommand` | 45 min |
@@ -895,7 +853,7 @@ typedef struct redisObject {
 Your `Obj{TypeEncoding uint8, LastAccessedAt uint32, Value interface{}}` is this, minus refcount. The nibble-packing in `core/typeencoding.go` mirrors the C bitfields exactly — keep it.
 
 - **type** is the user-visible contract (`TYPE` command, `WRONGTYPE` errors). **encoding** is the private representation. Commands check type; type internals check encoding.
-- **refcount** exists in C for shared objects and memory management. In Go the GC handles lifetime — **skip refcount** (your snapshot discipline in §23.3 replaces its one load-bearing use). C Redis pre-creates the integers 0–9999 as shared objects (`shared.integers`) so every `:5` reply and small value costs nothing; in Go, interning small-int strings is an optional ch. 39 micro-optimization.
+- **refcount** exists in C for shared objects and memory management. In Go the GC handles lifetime — **skip refcount** (your snapshot discipline in §23.3 replaces its one load-bearing use). C Redis pre-creates the integers 0–9999 as shared objects (`shared.integers`) so every `:5` reply and small value costs nothing; in Go, interning small-int strings is an optional micro-optimization — measure with ch. 38's benchmark before bothering.
 - **lru** — 24 bits holding either the LRU clock (seconds, wraps ~194 days — your `getCurrentClock` already masks to 24 bits) or, under LFU policy, 16 bits of decay-time + 8 bits of log-counter (§24.3). Same field, two interpretations, chosen by `maxmemory-policy`.
 
 ## 8.2 The encoding matrix — learn it cold
@@ -929,9 +887,13 @@ Every type file (`t_string.c`, `t_list.c`…) goes through `db.c`, never touchin
 
 This is the architecture lesson of the chapter: **cross-cutting concerns attach to the keyspace choke point, not to 200 command implementations.** When you add WATCH in ch. 33, it's five lines in `setKey`, not a hunt through every command. Your current code half-has this (`core/store.go`) — ch. 11 formalizes it: *no eval function may touch `store`/`expires` directly.* (`evalKEYS`, `evalRENAME`, `evalPERSIST` currently do.)
 
-## 8.4 One database, or sixteen
+## 8.4 Sixteen databases, not one
 
-Redis has `databases 16` (`SELECT n`) — a legacy feature; Cluster only allows db 0; the world uses db 0. Build a single `redisDb` struct `{dict, expires}` and a `SELECT` that errors for n>0, or make it an array — either is fine. The struct matters (it's the unit replication and persistence iterate); the multiplicity doesn't.
+Redis has `databases 16` (`SELECT n`) — a legacy feature nobody designs around any more, and Cluster mode allows only db 0. It is tempting to build one `redisDb` and error on `SELECT 1`, and that is what a study project does.
+
+Build the array. The cost is small and paid once: `redisDb` is already the right struct, the client carries a current-db index, and every keyspace call takes the db it operates on. The cost of *not* building it shows up everywhere later — `SELECTDB` opcodes in the RDB (§20.2), the `SELECT` the replication stream emits when the propagated command's db differs from the last one sent, `INFO keyspace`'s per-db lines, `MOVE`, `SWAPDB`, `COPY ... DB n`, `FLUSHALL` versus `FLUSHDB`, and a large fraction of the real test suite, which uses db 9 for its own isolation and will therefore refuse to run at all against a single-db server (§48.2).
+
+So: `databases 16` config, an array of `redisDb`, per-client `db` index, and `SELECT` validating against the configured count. In cluster mode, reject `SELECT n` for n > 0 exactly as real Redis does. The struct still matters most — it is the unit replication and persistence iterate — but the multiplicity is not optional for a replacement.
 
 ## Self-check — Chapter 8
 
@@ -940,19 +902,17 @@ Redis has `databases 16` (`SELECT n`) — a legacy feature; Cluster only allows 
 3. What five cross-cutting concerns hang off the keyspace write path? Where would WATCH live if you skipped the choke point?
 4. Why must `APPEND` force `raw` encoding?
 5. What are the two interpretations of the 24-bit `lru` field, and what chooses between them?
+6. Name four subsystems that change shape if you build one database instead of sixteen.
 
 ---
 
 # Chapter 9 — Expiration
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 2 h · **Before you start:** Chapter 8.
 >
 > **You're done when:** You can explain why a replica never expires a key on its own.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | `expire.c`: top-of-file comment + `activeExpireCycle` (the modern one walks ebuckets; read the *algorithm description* in the comment, which still describes the classic sampling contract) | 45 min |
@@ -1004,7 +964,7 @@ The two ideas: **sample the expires dict, not the keyspace** (yours does — the
 
 The statistical claim worth understanding: if every sample of 20 shows ≤25% expired, then expired keys are ≤~25% of the expires dict with high probability — bounded *garbage ratio*, not zero garbage. Redis chooses "bounded waste, bounded latency" over "clean, unbounded pause." That trade *is* this chapter.
 
-Modern note: 8.x replaced sampling with `ebuckets` — TTLs bucketed by deadline, so the cycle pops whole due-buckets instead of sampling. Better, and a good ch. 39 refactor; build sampling first because it teaches the budget discipline.
+Modern note: 8.x replaced sampling with `ebuckets` — TTLs bucketed by deadline, so the cycle pops whole due-buckets instead of sampling. Better, and a good optional refactor once ch. 48 passes; build sampling first, because the observable semantics are identical and the budget discipline is the lesson.
 
 ## 9.4 Expiry × replication — the rule everyone gets wrong
 
@@ -1031,9 +991,6 @@ Two corollaries you will implement in ch. 30:
 
 # Chapter 10 — Reading the source: keyspace and strings
 
-> ### What to do with this chapter
-> **Read the real Redis source**, following the two tours here. No code of your own.
->
 > **Time:** 3 h · **Before you start:** Chapters 8 and 9.
 >
 > **You're done when:** You can name the one function every key lookup passes through, and what it does on a replica.
@@ -1051,10 +1008,9 @@ What you steal: the choke-point function set (§8.3); replica-hides-master-delet
 
 # Chapter 11 — Build: keyspace, strings, and expiry, done right
 
-> ### What to do with this chapter
-> **Build it.** ~35 h of code. Your first milestone.
+> Your first milestone.
 >
-> **Time:** 35 h · **Before you start:** Chapters 8, 9, 10.
+> **Time:** 41 h · **Before you start:** Chapters 8, 9, 10.
 >
 > **You're done when:** The done-when script in this chapter passes, and `tests/ch11_commands.txt` diffs clean against real Redis.
 
@@ -1082,11 +1038,13 @@ Hooks are declared now, no-ops until chapters 23–33 fill them: **the choke poi
 
 Strings: `SET` (full matrix: NX XX GET EX PX EXAT PXAT KEEPTTL — mutual-exclusion errors included), the deprecated-but-everywhere legacy spellings `SETNX`/`SETEX`/`PSETEX`/`GETSET` (all four are one-liners over setGenericCommand once SET's matrix exists — that's the lesson), `GET`, `GETDEL`, `GETEX`, `APPEND` (forces raw!), `STRLEN`, `SETRANGE`/`GETRANGE`, `INCR`/`DECR`/`INCRBY`/`DECRBY` (overflow: `ERR increment or decrement would overflow`), `INCRBYFLOAT` (formatting: no trailing zeros — diff against real; and remember §20.4, it propagates as SET later), `MSET`/`MGET`/`MSETNX`.
 
-Also `LCS` (7.0: longest common subsequence of two string keys, with `LEN`/`IDX`/`MINMATCHLEN`/`WITHMATCHLEN`) — optional, but instructive: it is plain dynamic programming at **O(N×M) time _and_ memory**, so on two 1 MB strings it allocates a terabyte-scale matrix and real Redis simply refuses past a limit. Building it teaches the §1.2 lesson from the inside — the server hands you a sharp tool, documents the complexity, and trusts you.
+Also `LCS` (7.0: longest common subsequence of two string keys, with `LEN`/`IDX`/`MINMATCHLEN`/`WITHMATCHLEN`) — required, and instructive: it is plain dynamic programming at **O(N×M) time _and_ memory**, so on two 1 MB strings it allocates a terabyte-scale matrix and real Redis simply refuses past a limit. Building it teaches the §1.2 lesson from the inside — the server hands you a sharp tool, documents the complexity, and trusts you.
 
-Keys: `DEL`, `UNLINK` (alias for now — GC is lazy-free), `EXISTS` (with repeats — `EXISTS k k k` counts 3), `TYPE`, `TOUCH`, `COPY` (with `DB`/`REPLACE`; must deep-copy the value, and *not* the TTL unless asked), `RENAME`/`RENAMENX` (as a store-level swap, fixing audit #13; TTL travels; `no such key` error), `KEYS` (your own glob: `* ? [abc] \x` — port `stringmatchlen`, ~40 lines, audit #14), `SCAN` (with MATCH/COUNT/TYPE — cursor contract §15.3; with Go maps use the keys-snapshot trick temporarily, honest cursor arrives with the dict), `RANDOMKEY`, `TTL`/`PTTL` (rounding!), `EXPIRE`/`PEXPIRE`/`EXPIREAT`/`PEXPIREAT` (+ NX XX GT LT; past→delete, audit #7), `PERSIST`, `DBSIZE`, `FLUSHDB`/`FLUSHALL`, `OBJECT ENCODING|IDLETIME|FREQ|HELP`, `SELECT` (0 only), `DEBUG OBJECT|SLEEP|SET-ACTIVE-EXPIRE`.
+Keys: `DEL`, `UNLINK` (alias for now — GC is lazy-free), `EXISTS` (with repeats — `EXISTS k k k` counts 3), `TYPE`, `TOUCH`, `COPY` (with `DB`/`REPLACE`; must deep-copy the value, and *not* the TTL unless asked), `RENAME`/`RENAMENX` (as a store-level swap, fixing audit #13; TTL travels; `no such key` error), `KEYS` (your own glob: `* ? [abc] \x` — port `stringmatchlen`, ~40 lines, audit #14), `SCAN` (with MATCH/COUNT/TYPE — cursor contract §15.3; with Go maps use the keys-snapshot trick temporarily, honest cursor arrives with the dict), `RANDOMKEY`, `TTL`/`PTTL` (rounding!), `EXPIRE`/`PEXPIRE`/`EXPIREAT`/`PEXPIREAT` (+ NX XX GT LT; past→delete, audit #7), `PERSIST`, `DBSIZE`, `FLUSHDB`/`FLUSHALL`, `OBJECT ENCODING|IDLETIME|FREQ|HELP`, `SELECT` (all 16, §8.4), `SWAPDB`, `MOVE`, `EXPIRETIME`/`PEXPIRETIME`, `DEBUG OBJECT|SLEEP|SET-ACTIVE-EXPIRE|JMAP|STRINGMATCH-LEN`.
 
-Server: `COMMAND` (basic: count + names), `CONFIG GET/SET` (registry-backed; glob patterns), `INFO` (server, clients, memory-approx, stats, keyspace sections — real section format), `CLIENT SETNAME|GETNAME|LIST|ID`, `HELLO` (RESP2 announce only).
+Server: `CONFIG GET/SET/RESETSTAT` (registry-backed; glob patterns), `INFO` (server, clients, memory-approx, stats, keyspace sections — real section format, plus `commandstats`, `errorstats` and `latencystats`, because every Prometheus exporter parses those by name and a missing field is a broken dashboard), `CLIENT SETNAME|GETNAME|LIST|ID|INFO`, `TIME`.
+
+And the **`COMMAND` introspection family**, which is not the trivia it looks like: `COMMAND` (full reply), `COMMAND COUNT`, `COMMAND INFO name…`, `COMMAND DOCS [name…]`, `COMMAND LIST`, `COMMAND GETKEYS cmd args…`. `redis-cli` calls `COMMAND DOCS` on startup to build its completion table; several client libraries call `COMMAND` to learn arity and key positions; `COMMAND GETKEYS` is what cluster proxies and your own ACL key checks (ch. 47) use to find which arguments are keys. Build the metadata as *data* in the ch. 7 command table — arity, flags, first/last/step key positions, ACL categories (filled in ch. 47) — and generate it from real Redis's `commands/*.json` rather than hand-typing it. That generator is 100 lines and removes an entire class of divergence.
 
 ## 11.3 Active expiry
 
@@ -1117,9 +1075,6 @@ redis-cli -p 7379 SET s abc; APPEND s d; OBJECT ENCODING s   # raw
 
 # Chapter 12 — The big picture
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 2 h · **Before you start:** Chapter 11 — deliberately placed after your first build, because it is abstract before it.
 >
 > **You're done when:** You can draw the layer diagram and say what belongs in `beforeSleep` versus `serverCron`.
@@ -1178,9 +1133,6 @@ The dependency arrows only point down. `t_list.c` doesn't know AOF exists; `dict
 
 # Chapter 13 — Request lifecycles, traced
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 2 h · **Before you start:** Chapter 12.
 >
 > **You're done when:** You can trace `SET k v EX 10` from socket bytes to disk bytes from memory.
@@ -1245,14 +1197,11 @@ The computer-science core: five structures built from scratch, then the four col
 
 # Chapter 14 — Memory
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 3 h · **Before you start:** Chapter 13.
 >
 > **You're done when:** You can explain why Go cannot fork, and what that costs you in chapter 23.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | Redis docs: "Memory optimization" — `redis.io/topics/memory-optimization`; the encodings/thresholds section | 30 min |
@@ -1300,7 +1249,7 @@ The recommended build: **copy-the-index + immutable-values discipline** — snap
 
 ## 14.5 GC pressure, briefly
 
-Go's GC scans pointers. 100M `map[string]*Obj` entries = long mark phases and latency spikes. Real mitigations, in the order you should reach for them: fewer, bigger allocations (listpack does this for free — packed encodings are GC-friendly too); avoid pointers in hot structs (store small strings by value where possible); `GOGC`/`GOMEMLIMIT` tuning last. Don't optimize this preemptively — measure with `redis-benchmark` + `runtime/metrics` in ch. 39. But know *why* the packed encodings you build in chapter 17 help twice in Go: memory *and* GC.
+Go's GC scans pointers. 100M `map[string]*Obj` entries = long mark phases and latency spikes. Real mitigations, in the order you should reach for them: fewer, bigger allocations (listpack does this for free — packed encodings are GC-friendly too); avoid pointers in hot structs (store small strings by value where possible); `GOGC`/`GOMEMLIMIT` tuning last. Don't optimize this preemptively — measure with `redis-benchmark` + `runtime/metrics` in ch. 38. But know *why* the packed encodings you build in chapter 17 help twice in Go: memory *and* GC.
 
 ## Self-check — Chapter 14
 
@@ -1314,20 +1263,20 @@ Go's GC scans pointers. 100M `map[string]*Obj` entries = long mark phases and la
 
 # Chapter 15 — The data structures you will build
 
-> ### What to do with this chapter
-> **Read it.** No code — you build all five structures in chapter 17.
+> You build all five structures in chapter 17.
 >
 > **Time:** 12 h · **Before you start:** Chapter 14.
 >
 > **You're done when:** You can state SCAN's guarantee and why reverse-binary cursor order provides it.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | `dict.c` top-of-file comment + `dictRehash`, `dictScan` (read the reverse-binary-iteration essay above `dictScan` — the best comment in the codebase) | 1 h |
 > | `listpack.c` header comment — the exact byte format, worked through | 45 min |
 > | Pugh, "Skip Lists: A Probabilistic Alternative to Balanced Trees" (CACM 1990) — `epaperpress.com/sortsearch/download/skiplist.pdf`; short, readable; then `t_zset.c:zslInsert` | 1 h |
 > | `quicklist.h` struct comments; `intset.c` (tiny — read it all) | 30 min |
+> | `rax.c` header comment — the compressed-radix-tree node format, worked through | 30 min |
 > | **Aumasson & Bernstein, "SipHash: a fast short-input PRF"** (INDOCRYPT 2012) — `131002.net/siphash/siphash.pdf`. Redis's dict hashes with SipHash-1-2 (`siphash.c`), not a fast non-cryptographic hash, and §15.2 explains why: without a keyed PRF an attacker picks colliding keys and turns every O(1) lookup into O(n). Hash-flooding is the one security bug a from-scratch keyspace reliably ships with. | 45 min |
 
 These are built as **standalone libraries with their own tests** in chapter 17, before ch. 19 wires them into commands. This chapter is the theory; ch. 17 is the spec.
@@ -1336,7 +1285,7 @@ These are built as **standalone libraries with their own tests** in chapter 17, 
 
 C strings are null-terminated: O(N) length, no binary safety, buffer overruns. SDS (`sds.c`) prefixes a header {len, alloc} so length is O(1), contents are binary-safe, and append can grow geometrically. Five header sizes (`sdshdr5`…`sdshdr64`) exist to shave header bytes for short strings.
 
-**In Go, `string` and `[]byte` already are SDS** — length-prefixed, binary-safe. You skip the build, but keep two SDS lessons: (a) preallocation policy — an append-heavy value should over-allocate (Go's `append` already doubles; fine); (b) the embstr idea — Redis stores strings ≤44 bytes inside the object header's cache line (one allocation, not two). Your `deduceTypeEncoding` already knows the 44; in Go the analogous trick is storing small strings by value in the object rather than behind a pointer — optional, measured, ch. 39.
+**In Go, `string` and `[]byte` already are SDS** — length-prefixed, binary-safe. You skip the build, but keep two SDS lessons: (a) preallocation policy — an append-heavy value should over-allocate (Go's `append` already doubles; fine); (b) the embstr idea — Redis stores strings ≤44 bytes inside the object header's cache line (one allocation, not two). Your `deduceTypeEncoding` already knows the 44; in Go the analogous trick is storing small strings by value in the object rather than behind a pointer — optional, and only if ch. 38's benchmark says so.
 
 ## 15.2 The dict: incremental rehash
 
@@ -1382,7 +1331,7 @@ Ziplist (`ziplist.c`) is the deprecated ancestor — same idea, but entries enco
 
 A **quicklist** is the production list: a doubly-linked list *of listpacks*, each node bounded by `list-max-listpack-size` — which defaults to `-2`, meaning **8 KB per node** rather than a fixed entry count (§8.2). Ends stay unpacked-ish for fast push/pop; middle nodes can be LZF-compressed (`list-compress-depth`) since list access concentrates at the ends. You get: O(1) amortized push/pop at both ends, bounded memmove costs (one node, not the whole list), decent memory.
 
-Build: a plain doubly-linked list of your listpacks, split-on-overflow, merge-on-underflow (adjacent nodes both < half-full). Skip compression (or add LZF in ch. 39).
+Build: a plain doubly-linked list of your listpacks, split-on-overflow, merge-on-underflow (adjacent nodes both < half-full). Skip node compression — you write the LZF codec in ch. 23 for RDB anyway, so wiring `list-compress-depth` on top of it afterwards is an afternoon, and it changes nothing a client can observe.
 
 ## 15.6 skiplist
 
@@ -1396,9 +1345,13 @@ Ordering rule: by score, then lexicographically by member for equal scores. The 
 
 A set of only integers, stored as a **sorted array** with a uniform width (16/32/64-bit) that **upgrades** when a bigger int arrives (re-encode the whole array; never downgrades). Membership = binary search. ~150 lines in Go. It's the warm-up build — do it first in chapter 17.
 
-## 15.8 rax (radix tree) — read-only for now
+## 15.8 rax (radix tree)
 
-Streams (ch. 39) index entry IDs with a compressed radix tree (`rax.c`); cluster slot→key tracking historically used one too. Skim the header comment; build only if you do streams.
+A **compressed radix tree** (`rax.c`): a trie whose single-child chains are collapsed into one node holding the whole shared substring, so a key like `stream-entry-1700000000000-0` costs a handful of nodes rather than thirty. Nodes are variable-length allocations with the child pointers packed after the characters; lookup walks characters, insert splits a compressed node when the shared prefix ends.
+
+You need it for **streams** (ch. 41–42), which index entries by their 128-bit ID and need ordered iteration and range starts — exactly what a radix tree gives and a hash table does not. Redis also used one for cluster slot→key tracking and uses it for client tracking's prefix table (ch. 48).
+
+Build the ordered-map subset: `Insert`, `Find`, `Remove`, `SeekGE`/`SeekLE`, forward and reverse iteration. Skipping the compression (a plain 256-way trie) works and costs an order of magnitude in memory on stream IDs, which is the whole reason the structure exists — so compress.
 
 ## 15.9 Geohash — how GEO commands are a zset in disguise
 
@@ -1413,7 +1366,7 @@ A radius/box query (`GEOSEARCH … BYRADIUS 200 km`) then works like this (`geoh
 3. Each of the 9 cells is a contiguous **score range** (the cell's bit-prefix padded with 0s … padded with 1s) → 9 zset range scans.
 4. Filter candidates by *exact* haversine distance (the cells over-approximate).
 
-The lesson generalizes: **map a query shape onto a structure you already have** — 2-D proximity became 9 range scans on a 1-D ordered index. The same trick (space-filling curves over B-trees) powers geo-indexes in MySQL, DynamoDB, and MongoDB. Build it in ch. 39 (menu row in ch. 39): the encode/decode + neighbors math is ~300 lines and the rest is zset calls you already own.
+The lesson generalizes: **map a query shape onto a structure you already have** — 2-D proximity became 9 range scans on a 1-D ordered index. The same trick (space-filling curves over B-trees) powers geo-indexes in MySQL, DynamoDB, and MongoDB. Build it in ch. 44: the encode/decode + neighbours math is ~300 lines and the rest is zset calls you already own.
 
 > 📚 Wikipedia: "Geohash" and "Z-order curve" (`en.wikipedia.org/wiki/Geohash`, `en.wikipedia.org/wiki/Z-order_curve`) · G.M. Morton, *A Computer Oriented Geodetic Data Base* (1966) — the original · `geo.c:geoaddCommand`, `geohash.c:geohashEncode`, `geohash_helper.c` in the redis source.
 
@@ -1424,16 +1377,13 @@ The lesson generalizes: **map a query shape onto a structure you already have** 
 3. In listpack, why is the entry length written at the entry's *end* too? What did ziplist do instead, and what disaster followed?
 4. Why a skiplist over a red-black tree, per antirez? What does the span field buy?
 5. Why does intset upgrade but never downgrade?
-6. For each structure — dict, listpack, quicklist, skiplist, intset — name the command family that dies without it.
+6. For each structure — dict, listpack, quicklist, skiplist, intset, rax — name the command family that dies without it.
 
 ---
 ---
 
 # Chapter 16 — Reading the source: the dict
 
-> ### What to do with this chapter
-> **Read the real Redis source**, following the tour here. No code of your own.
->
 > **Time:** 2 h · **Before you start:** Chapter 15.
 >
 > **You're done when:** You can re-derive the `dictScan` argument without the comment in front of you.
@@ -1446,15 +1396,14 @@ What you steal: two-table rehash state machine; rehash-step placement (every op 
 
 # Chapter 17 — Build: the data-structure libraries
 
-> ### What to do with this chapter
-> **Build it.** ~45 h of code — five standalone libraries with their own tests.
+> Six standalone libraries with their own tests.
 >
-> **Time:** 45 h · **Before you start:** Chapters 14, 15, 16.
+> **Time:** 55 h · **Before you start:** Chapters 14, 15, 16.
 >
 > **You're done when:** `go test ./core/ds/...` is green, the fuzzers run clean, and chapter 11's harness still diffs clean on the new dict.
 
 
-**Goal**: five packages under `core/ds/`, each standalone, tested, benchmarked, and API-shaped for ch. 19. No server changes except swapping the keyspace onto your dict at the end. Order: intset (warm-up) → dict → listpack → skiplist → quicklist.
+**Goal**: six packages under `core/ds/`, each standalone, tested, benchmarked, and API-shaped for chapters 19 and 42. No server changes except swapping the keyspace onto your dict at the end. Order: intset (warm-up) → dict → listpack → skiplist → quicklist → rax.
 
 ## 17.1 `ds/intset` (~4 h)
 
@@ -1481,7 +1430,12 @@ Tests: model = sorted slice; property-test all ops; span-consistency invariant c
 Doubly-linked nodes wrapping your listpack; fill limit from config — implement **both** senses of `list-max-listpack-size` (positive = entry count, negative = the -1…-5 size ladder, default -2 = 8 KB), since real Redis's default is the size one; split/merge; API mirrors list commands' needs: PushHead/Tail, PopHead/Tail, `InsertBefore/After(pivot)`, `Index(n)`, `Range(from,to)`, `RemoveRange`, iterator with cursor stability across node boundaries.
 Tests: model-diff vs `[]string`; node-count sanity under interleaved push/pop (no leak of empty nodes); merge threshold behavior.
 
-## 17.6 Done-when
+## 17.6 `ds/rax` (~10 h)
+
+Per §15.8: compressed radix tree over `[]byte` keys with arbitrary values. API: `Insert(key, val) (added bool)`, `Find(key)`, `Remove(key)`, `Len`, `SeekGE(key)` / `SeekLE(key)`, and iterators in both directions with cursor stability across the node splits an insert can cause mid-iteration. Node layout is yours (Go structs, not Redis's packed allocation) — the *compression* and the ordered iteration are the parts that matter.
+Tests: model-diff against a sorted `[][]byte` under random insert/remove sequences; prefix-heavy key sets (a million stream-shaped IDs) with a memory comparison against an uncompressed trie recorded in the README; split-during-iteration correctness; fuzz the key bytes (binary-safe, including embedded zeros and the empty key).
+
+## 17.7 Done-when
 
 `go test ./core/ds/... -count=1` green; fuzzers clean for 5 min each; benchmarks recorded in `core/ds/README.md`; ch. 11 harness still zero-diff on the dict-backed store.
 
@@ -1489,9 +1443,6 @@ Tests: model-diff vs `[]string`; node-count sanity under interleaved push/pop (n
 
 # Chapter 18 — Reading the source: the collections
 
-> ### What to do with this chapter
-> **Read the real Redis source**, following the tour here. No code of your own.
->
 > **Time:** 2.5 h · **Before you start:** Chapter 17.
 >
 > **You're done when:** You can name each collection's conversion trigger and its exact threshold.
@@ -1499,15 +1450,12 @@ Tests: model-diff vs `[]string`; node-count sanity under interleaved push/pop (n
 
 ## Collections (2.5 h)
 
-Read: `t_list.c`: `pushGenericCommand`, `listTypeTryConversionRaw` (threshold logic); `quicklist.c`: `quicklistPush`, node split/merge; `listpack.c`: `lpInsert` + the format comment; `t_hash.c`: `hashTypeSet` + conversion; `t_set.c`: `setTypeAdd` (intset→listpack→dict ladder); `t_zset.c`: `zslInsert` (spans!), `zslDeleteNode`, `zsetAdd` (the flags matrix NX/XX/GT/LT/CH/INCR), `genericZrangebyscoreCommand`; `intset.c` whole.
+Read: `sort.c:sortCommandGeneric` (the BY/GET pattern dereference); `t_list.c`: `pushGenericCommand`, `listTypeTryConversionRaw` (threshold logic); `quicklist.c`: `quicklistPush`, node split/merge; `listpack.c`: `lpInsert` + the format comment; `t_hash.c`: `hashTypeSet` + conversion; `t_set.c`: `setTypeAdd` (intset→listpack→dict ladder); `t_zset.c`: `zslInsert` (spans!), `zslDeleteNode`, `zsetAdd` (the flags matrix NX/XX/GT/LT/CH/INCR), `genericZrangebyscoreCommand`; `intset.c` whole.
 What you steal: each conversion trigger, exactly; zslInsert with spans, near-verbatim; ZADD's flag semantics table.
 
 # Chapter 19 — Build: the collections
 
-> ### What to do with this chapter
-> **Build it.** ~40 h of code.
->
-> **Time:** 40 h · **Before you start:** Chapters 17 and 18.
+> **Time:** 48 h · **Before you start:** Chapters 17 and 18.
 >
 > **You're done when:** `tests/ch19_commands.txt` diffs clean, and `OBJECT ENCODING` flips at exactly the configured thresholds.
 
@@ -1533,9 +1481,11 @@ Every write goes through store hooks (dirty, notify, signalReady — the last on
 **Lists** (listpack→quicklist): LPUSH/RPUSH/LPUSHX/RPUSHX, LPOP/RPOP (+count), LLEN, LRANGE (negative indexes!), LINDEX, LSET, LINSERT BEFORE|AFTER, LREM (±count semantics), LTRIM, LMOVE/RPOPLPUSH, LPOS (RANK/COUNT/MAXLEN).
 **Hashes** (listpack→dict): HSET(multi)/HSETNX, HGET/HMGET/HGETALL, HDEL, HLEN, HEXISTS, HKEYS/HVALS, HINCRBY/HINCRBYFLOAT, HSTRLEN, HRANDFIELD, HSCAN.
 **Sets** (intset→listpack→dict): SADD/SREM, SISMEMBER/SMISMEMBER, SMEMBERS, SCARD, SPOP(+count — remember §20.4!), SRANDMEMBER (±count semantics differ — read the doc), SMOVE, SINTER/SUNION/SDIFF (+STORE, +SINTERCARD), SSCAN.
-**Zsets** (listpack→skiplist+dict): ZADD (NX XX GT LT CH INCR — the full matrix from `zsetAdd`), ZREM, ZSCORE/ZMSCORE, ZCARD, ZINCRBY, ZRANK/ZREVRANK (WITHSCORE), ZRANGE (REV, BYSCORE, BYLEX, LIMIT — the unified 6.2 form + legacy ZRANGEBYSCORE etc.), ZRANGESTORE, ZCOUNT, ZLEXCOUNT, ZPOPMIN/ZPOPMAX, ZRANDMEMBER, ZREMRANGEBYRANK/SCORE/LEX, ZSCAN. (ZUNION/ZINTER/ZDIFF +STORE if you have appetite — the weights/aggregate options are fiddly but mechanical.)
+**Zsets** (listpack→skiplist+dict): ZADD (NX XX GT LT CH INCR — the full matrix from `zsetAdd`), ZREM, ZSCORE/ZMSCORE, ZCARD, ZINCRBY, ZRANK/ZREVRANK (WITHSCORE), ZRANGE (REV, BYSCORE, BYLEX, LIMIT — the unified 6.2 form + legacy ZRANGEBYSCORE/ZREVRANGEBYSCORE/ZRANGEBYLEX/ZREVRANGEBYLEX), ZRANGESTORE, ZCOUNT, ZLEXCOUNT, ZPOPMIN/ZPOPMAX, ZRANDMEMBER, ZREMRANGEBYRANK/SCORE/LEX, ZSCAN, and the set-algebra family **ZUNION/ZINTER/ZDIFF/ZINTERCARD + ZUNIONSTORE/ZINTERSTORE/ZDIFFSTORE** with their `WEIGHTS` and `AGGREGATE SUM|MIN|MAX` options — fiddly but mechanical, and every leaderboard library sends them.
 **Multi-key pops** (7.0 forms, once lists+zsets exist): LMPOP/ZMPOP — first non-empty of N keys; their blocking twins land in ch. 33.
-**Optional now, menu later**: `SORT`/`SORT_RO` (`sort.c:sortCommandGeneric` — BY/GET pattern dereferencing, ALPHA, LIMIT; the closest thing Redis has to a join, and a good rainy-day build) and hash **field TTLs** (7.4's HEXPIRE family — ch. 39 menu; note now that your hash object layer will need per-field metadata someday, but don't design for it yet).
+**`SORT`/`SORT_RO`** (`sort.c:sortCommandGeneric`): `BY pattern` / `GET pattern` dereferencing (`weight_*`, `GET obj_*->field`, the literal `#`), `ALPHA`, `LIMIT`, `STORE`, and the sorted-set/set/list input rules. It is the closest thing Redis has to a join, the pattern-dereference parser is a genuinely good exercise, and `SORT` with `BY` is *not* deterministic across nodes — which is why it propagates as its effect (§20.4) when it has a `STORE`. Required; budget 6 h of the 48.
+
+Hash **field TTLs** (7.4's `HEXPIRE` family) are deliberately deferred to ch. 48: they need per-field metadata and a second expiry index, and bolting that onto the hash object layer now would complicate every other hash command for a feature you cannot test properly until expiry, propagation and persistence are all finished. Leave a comment in the hash object layer saying so.
 
 Score parsing: `+inf`/`-inf`/`(3.5` exclusive ranges; lex ranges `[a (b - +`. Diff-harness these hard — range-boundary bugs are this chapter's signature failure.
 
@@ -1573,14 +1523,11 @@ Making memory survive a crash, and deciding what dies when memory runs out.
 
 # Chapter 20 — Persistence: RDB and AOF
 
-> ### What to do with this chapter
-> **Read it, twice.** No code.
->
 > **Time:** 4 h · **Before you start:** Chapter 19.
 >
 > **You're done when:** You can fill in the crash matrix in §20.6 from memory.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | Redis docs: "Persistence" — `redis.io/topics/persistence`; the best overview antirez ever wrote, largely still his text | 45 min |
@@ -1607,18 +1554,26 @@ Production commonly runs **both**; on boot, **AOF wins** if enabled (it's more c
 
 ```
 "REDIS0011"                       magic + version
-AUX fields (0xFA): redis-ver, bits, ctime, used-mem…
+0xFA <key> <val>                  AUX: redis-ver, redis-bits, ctime, used-mem, repl-id, repl-offset
+0xF5 <payload>                    FUNCTION2: a serialized function library (ch. 40)
 0xFE <dbnum>                      SELECTDB
 0xFB <dict-size> <expires-size>   RESIZEDB hint
 per key:
+  [0xFD <s-timestamp u32le>]      optional EXPIRETIME     (seconds, legacy)
   [0xFC <ms-timestamp u64le>]     optional EXPIRETIME_MS
-  <value-type byte>               0=string 1=list… (encoding-specific variants)
+  [0xF8 <idle len-encoded>]       optional IDLE  (LRU, written with maxmemory-policy lru)
+  [0xF9 <freq u8>]                optional FREQ  (LFU, written with maxmemory-policy lfu)
+  <value-type byte>               0=string 1=list… (one per type × encoding)
   <key: string-encoded> <value: type-specific encoding>
 0xFF                              EOF
 <CRC64 u64le>                     checksum of everything before
 ```
 
-String encoding within RDB has its own micro-format (`rdbSaveLen`): length in 6, 14, or 32/64 bits chosen by the top 2 bits of the first byte — plus special forms for int-as-string and LZF-compressed. Implement the 6/14/32-bit forms and the int forms; skip LZF (flag a config to refuse compressed files on load).
+Two details that decide whether your files and real Redis's files are mutually readable:
+
+**The string micro-format** (`rdbSaveLen` / `rdbSaveStringObject`): the top two bits of the first byte select 6-bit, 14-bit, or 32/64-bit lengths, and the fourth combination (`0b11`) selects a *special* encoding — int8/int16/int32 stored as an integer, or **LZF-compressed**. Implement all of them, **including LZF**. It is tempting to skip compression and refuse compressed files, and it is exactly the shortcut that makes "load a real `dump.rdb`" impossible: real Redis compresses any string longer than 20 bytes when `rdbcompression yes`, which is the default, so essentially every production RDB file in existence contains LZF blocks. LZF itself is about 150 lines for the decompressor and another 100 for the compressor — the smallest compression algorithm you will ever implement, and the whole of ch. 23's interop requirement rests on it.
+
+**The value-type bytes are per type *and* encoding.** A hash is type 4 when written as a dict and type 16 (`RDB_TYPE_HASH_LISTPACK`) when written as a listpack; a zset has both `RDB_TYPE_ZSET_2` and `RDB_TYPE_ZSET_LISTPACK`; lists are written as `RDB_TYPE_LIST_QUICKLIST_2` (a list of listpack blobs); streams as `RDB_TYPE_STREAM_LISTPACKS_3`. The full list is `rdb.h`'s `RDB_TYPE_*` defines — copy it wholesale into a Go const block, implement the writers for the encodings you produce, and implement the **readers for all of them**, because a real Redis file may use an encoding your server would not have chosen.
 
 Collections serialize either as element streams or — key insight — **packed encodings dump their raw bytes**: a listpack-encoded hash is written as one string (the listpack buffer itself). Loading re-validates and possibly re-converts. This makes RDB fast *and* teaches why the encodings being self-contained byte arrays pays off twice.
 
@@ -1695,14 +1650,11 @@ Build the table, then make tests enforce every row (ch. 23 done-when):
 
 # Chapter 21 — Crash safety: the filesystem contract
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 2 h · **Before you start:** Chapter 20.
 >
 > **You're done when:** You can write the temp-file/fsync/rename/fsync-dir sequence from memory and say why each step is there.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | **Pillai et al., "All File Systems Are Not Created Equal: On the Complexity of Crafting Crash-Consistent Applications"** (OSDI 2014) — `usenix.org/system/files/conference/osdi14/osdi14-paper-pillai.pdf`. The paper behind §21.2's liturgy: which orderings and atomicity properties you may actually assume, and how they differ per filesystem. It finds these bugs in SQLite, Git and PostgreSQL, so assume they are in yours too. | 1.5 h |
@@ -1735,9 +1687,6 @@ kill -9 loops at randomized points; power-loss simulation = SIGKILL is honest en
 
 # Chapter 22 — Reading the source: RDB and AOF
 
-> ### What to do with this chapter
-> **Read the real Redis source**, following the two tours here. No code of your own.
->
 > **Time:** 4 h · **Before you start:** Chapter 21.
 >
 > **You're done when:** You can describe the AOF everysec stall rule and the RDB child lifecycle.
@@ -1755,10 +1704,9 @@ What you steal: flush/fsync policy machine; fake-client loader; rewrite temp-fil
 
 # Chapter 23 — Build: persistence
 
-> ### What to do with this chapter
-> **Build it.** ~45 h of code. The hardest engineering problem in this book, because Go has no fork.
+> The hardest engineering problem in this book, because Go has no fork.
 >
-> **Time:** 45 h · **Before you start:** Chapters 20, 21, 22.
+> **Time:** 53 h · **Before you start:** Chapters 20, 21, 22.
 >
 > **You're done when:** Every row of the §20.6 crash matrix passes under repeated `kill -9`, including zero acknowledged loss under `appendfsync always`.
 
@@ -1775,13 +1723,17 @@ What you steal: flush/fsync policy machine; fake-client loader; rewrite temp-fil
 
 ## 23.2 RDB build notes
 
-Format from §20.2. Write into a `bufio.Writer` wrapped in a CRC64-computing writer (implement the Jones polynomial per `crc64.c`, or vendor the table — it's a constant). Value serializers per encoding, packed-encodings-dump-raw where your listpack is byte-compatible (it is, if 20.3 matched the format — reward collected). Loader: strict, but tolerant of *newer* value types by erroring with names, and validating listpacks via the fuzz-hardened decoder before trusting them (§17.3's "disk you can't trust").
+Format from §20.2. Write into a `bufio.Writer` wrapped in a CRC64-computing writer (implement the Jones polynomial per `crc64.c`, or vendor the table — it's a constant). Value serializers per encoding, packed-encodings-dump-raw where your listpack is byte-compatible (it is, if ch. 17 matched the format — reward collected). Loader: strict, but tolerant of *newer* value types by erroring with names, and validating listpacks via the fuzz-hardened decoder before trusting them (§17.3's "disk you can't trust").
+
+**LZF, both directions** (~4 h). Decompression first — it is a simple back-reference format and it is what lets you read real files. Then compression, gated by `rdbcompression` (default yes) and applied to strings over 20 bytes, because your files should look like Redis's. Property-test round-trip on random and adversarial inputs (all-same-byte, no-repeats, exactly-at-the-window-boundary).
+
+**`DUMP` and `RESTORE`** land here too, not in ch. 36 where they are first *used*: `DUMP` is the RDB value serializer plus a 2-byte RDB version footer and a CRC64; `RESTORE key ttl payload [REPLACE] [ABSTTL] [IDLETIME n] [FREQ n]` is the inverse with validation. Building them alongside the serializer costs an hour; building them later means touching the serializer twice. Cluster's `MIGRATE` (ch. 36) is then pure plumbing over commands that already exist.
 
 Boot order per §12.2: load before serving; big files → `-LOADING Redis is loading the dataset in memory` for early connections (test it with a deliberate slow-load debug flag).
 
 Save points: `save 900 1` config parsing; cron checks dirty counter + elapsed; `SHUTDOWN` saves if any save point configured (and `SHUTDOWN NOSAVE` doesn't).
 
-**Stretch with high payoff**: make your RDB *actually loadable by real `redis-server`* (and vice versa). It forces byte-exactness everywhere and turns the oracle up to maximum. Budget +6 h; worth it.
+**Interop is a requirement, not a stretch.** Your `dump.rdb` must load in real `redis-server`, and a real `dump.rdb` must load in DiceMe — including one written by a server with `rdbcompression yes` and a mixed workload of all five types. This is the single highest-value done-when in the chapter: it forces byte-exactness through the length encoding, the string encoding, the per-encoding value writers and the checksum all at once, and it turns `redis-check-rdb` into a free validator for the rest of the project. Budget the +6 h inside the 53.
 
 ## 23.3 The snapshot mechanism (§20.5 option B, specified)
 
@@ -1817,7 +1769,7 @@ Rewrites via §23.3 snapshots: serialize minimal commands (or RDB-preamble: emit
 
 Loader: fake client from ch. 7 pays off — read RESP arrays, dispatch through the normal table with propagation *disabled* (a replay must not re-feed the AOF) — add the `CLIENT_REPLAY`-style flag to dispatch now; replication reuses it in ch. 30. Torn tail: `aof-load-truncated yes` behavior + test.
 
-`WAITAOF` — skip; `appendfsync` switching at runtime via CONFIG SET — support, it's a config-registry validator away.
+`appendfsync` switching at runtime via CONFIG SET — support, it's a config-registry validator away. `WAITAOF` needs replication acks and arrives in ch. 48; leave the fsync-offset counter it will read in place now (one integer, incremented per completed fsync), because retrofitting the counter later means auditing every flush path again.
 
 ## 23.5 Done-when
 
@@ -1829,7 +1781,10 @@ tests/ch23_crash.sh aof-always    # ZERO acked writes lost (the hard one — pro
 tests/ch23_crash.sh rewrite-race  # kill -9 DURING BGREWRITEAOF x20 → always boots, never corrupt
 redis-cli -p 7379 BGSAVE            # under storm: no client sees >200ms latency (measure!)
 # snapshot isolation: the §23.3 test, all five type rows
-# stretch: dump.rdb loads in real redis-server && real dump.rdb loads in dice
+# interop (required): dump.rdb loads in real redis-server && real dump.rdb (rdbcompression yes,
+#   all five types, TTLs, 16 dbs) loads in dice with identical DEBUG DIGEST
+redis-check-rdb dump.rdb ; redis-check-aof appendonly.aof   # real Redis's validators accept your files
+redis-cli -p 7379 DEBUG RELOAD      # save+load round trip preserves everything, every type
 ```
 
 ## 23.6 Traps
@@ -1844,14 +1799,11 @@ redis-cli -p 7379 BGSAVE            # under storm: no client sees >200ms latency
 
 # Chapter 24 — Eviction
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 2 h · **Before you start:** Chapter 23.
 >
 > **You're done when:** You can explain the eviction pool's insertion rule and how an 8-bit counter represents a million hits.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | `evict.c`: file comment, `evictionPoolPopulate`, `performEvictions` — compare against your `core/eviction*.go` as you read | 1 h |
@@ -1911,9 +1863,6 @@ Each evicted key is a **write**: propagate `DEL`/`UNLINK` to replicas and AOF (r
 
 # Chapter 25 — Reading the source: eviction
 
-> ### What to do with this chapter
-> **Read the real Redis source**, following the tour here. No code of your own.
->
 > **Time:** 1.5 h · **Before you start:** Chapter 24.
 >
 > **You're done when:** You have read `evictionPoolPopulate` closely enough to see what your own `Push` gets wrong.
@@ -1926,10 +1875,7 @@ What you steal: pool insertion exactly; just-enough freeing loop; LFU's three ti
 
 # Chapter 26 — Build: maxmemory and eviction
 
-> ### What to do with this chapter
-> **Build it.** ~20 h of code.
->
-> **Time:** 20 h · **Before you start:** Chapters 24 and 25.
+> **Time:** 23 h · **Before you start:** Chapters 24 and 25.
 >
 > **You're done when:** Under memory pressure, LRU keeps a hot set resident while random visibly does not, and `DEBUG RECOUNT-MEMORY` shows zero drift.
 
@@ -1942,6 +1888,8 @@ What you steal: pool insertion exactly; just-enough freeing loop; LFU's three ti
 `INFO memory`: `used_memory` (your counter), `used_memory_rss` (`runtime.ReadMemStats.Sys` — labeled approximate), `maxmemory`, `maxmemory_policy`, `evicted_keys`.
 
 Retire `KeysLimit` (audit #8); `CONFIG SET maxmemory 100mb` with the size-suffix parser.
+
+**Client eviction** (`maxmemory-clients`, 7.0) belongs here as well: client output and input buffers are counted in a separate aggregate budget, and when it is exceeded the clients with the largest buffers are disconnected — the aggregate cousin of the per-client `client-output-buffer-limit` (§38.2). Without it, ten thousand moderately-slow clients each staying under the per-client limit can still exhaust memory, which is the failure the 7.0 feature was added for. `MEMORY USAGE key [SAMPLES n]` also lands here, since it is `SizeOf()` with a sampling rule for large collections.
 
 ## 26.2 performEvictions
 
@@ -1983,14 +1931,11 @@ The wall. Two machines, one dataset, an asynchronous link that drops.
 
 # Chapter 27 — Replication
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 5 h · **Before you start:** Chapter 26.
 >
 > **You're done when:** You can state the two conditions that allow a partial resync.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | Redis docs: "Replication" — `redis.io/topics/replication`; full read | 1 h |
@@ -2067,9 +2012,6 @@ Under your engine-goroutine model: the engine owns feed + backlog; per-replica w
 
 # Chapter 28 — Debugging a database
 
-> ### What to do with this chapter
-> **Read it,** and set up the logging and log-merge tooling before you start chapter 30.
->
 > **Time:** 2 h · **Before you start:** Chapter 27.
 >
 > **You're done when:** You have a log-merge script and a `--seed` flag ready.
@@ -2120,8 +2062,7 @@ One hypothesis at a time, written down before testing (NOTES.md). Every fixed bu
 
 # Chapter 29 — Reading the source: replication
 
-> ### What to do with this chapter
-> **Read the real Redis source**, following the tour here. This is effectively the chapter-30 spec.
+> This is effectively the chapter-30 spec.
 >
 > **Time:** 3 h · **Before you start:** Chapters 27 and 28.
 >
@@ -2135,8 +2076,7 @@ What you steal: everything. This tour is effectively the chapter 30 spec; take n
 
 # Chapter 30 — Build: replication — the wall
 
-> ### What to do with this chapter
-> **Build it.** ~55 h of code. The wall.
+> The wall.
 >
 > **Time:** 55 h · **Before you start:** Chapters 27, 28, 29.
 >
@@ -2170,7 +2110,7 @@ redis-cli -p 7379 SET k v ; redis-cli -p 7380 GET k          # v, within 10ms (m
 redis-cli -p 7380 SET x 1                                     # -READONLY …
 redis-benchmark -p 7379 -n 100000 -P 16 -t set ; # replica DBSIZE converges to master's
 # partial resync: tcpkill/close the replica's conn mid-benchmark (a storm flag drops it);
-#   master log: "+CONTINUE"; NO RDB transfer (log proves it); datasets converge (DEBUG DIGEST-equivalent — build one: CRC of sorted key/value dump)
+#   master log: "+CONTINUE"; NO RDB transfer (log proves it); datasets converge (`DEBUG DIGEST` — build the real command, ch. 48 §48.1: an order-independent digest of the whole keyspace, compared master-to-replica, never to a constant)
 # backlog overflow: stop replica 60s under heavy writes with tiny repl-backlog-size → reconnect does FULL resync; converges
 # expiry: SET k v PX 900 on master; replica GET k at t+950ms → nil BUT replica DBSIZE still counts it until master's DEL arrives (test the asymmetry!)
 # WAIT: WAIT 1 100 returns 1 with live replica; kill replica → WAIT 1 100 returns 0 after ~100ms
@@ -2198,16 +2138,13 @@ Atomic batches and blocked clients, then sharding across many masters with autom
 
 ---
 
-# Chapter 31 — Transactions, blocking, pub/sub, scripting
+# Chapter 31 — Transactions, blocking, and pub/sub
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 3 h · **Before you start:** Chapter 30.
 >
 > **You're done when:** You can say exactly when a blocked BLPOP client wakes, relative to the pushing client's MULTI batch.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | `multi.c` — all of it, it's short; `blocked.c`: file comment + `blockForKeys` / `handleClientsBlockedOnKeys` | 1.5 h |
@@ -2252,17 +2189,17 @@ In Go: a blocked client's connection goroutine simply parks on its reply channel
 
 ## 31.4 Pub/sub
 
-Fire-and-forget fan-out, entirely orthogonal to the keyspace: `SUBSCRIBE ch` (registry channel→clients), `PUBLISH ch msg` (`pubsubPublishMessage`: push to every subscriber's output buffer *now*), `PSUBSCRIBE news.*` (pattern list, matched per publish — O(patterns), unavoidable). No buffering, no replay, no acks: a subscriber that was disconnected missed the message, full stop (contrast Streams, ch. 39, which is the durable variant). Subscribed clients in RESP2 enter a restricted mode (only [P]SUB/UNSUB/PING allowed); RESP3 lifts this via push frames. Messages to replicas: PUBLISH propagates through the replication stream, so subscribers on replicas hear it. The real cost center is slow subscribers × fan-out = output-buffer blowup → the `pubsub` class of client-output-buffer-limits exists precisely for this (§38.4).
+Fire-and-forget fan-out, entirely orthogonal to the keyspace: `SUBSCRIBE ch` (registry channel→clients), `PUBLISH ch msg` (`pubsubPublishMessage`: push to every subscriber's output buffer *now*), `PSUBSCRIBE news.*` (pattern list, matched per publish — O(patterns), unavoidable). No buffering, no replay, no acks: a subscriber that was disconnected missed the message, full stop (contrast Streams, ch. 41–42, which are the durable variant). Subscribed clients in RESP2 enter a restricted mode (only [P]SUB/UNSUB/PING allowed); RESP3 lifts this via push frames. Messages to replicas: PUBLISH propagates through the replication stream, so subscribers on replicas hear it. The real cost center is slow subscribers × fan-out = output-buffer blowup → the `pubsub` class of client-output-buffer-limits exists precisely for this (§38.4).
 
-Cluster wrinkle: plain `PUBLISH` must broadcast to **every node** in the cluster (a subscriber could be anywhere) — an O(nodes) bus storm per message. **Sharded pub/sub** (7.0: `SSUBSCRIBE`/`SPUBLISH`/`SUNSUBSCRIBE`, `pubsub.c:spublishCommand`) hashes the channel name like a key: messages route only to the channel's slot-owner shard and its replicas. Same registries, one extra slot check — a ch. 36 stretch once the bus exists.
+Cluster wrinkle: plain `PUBLISH` must broadcast to **every node** in the cluster (a subscriber could be anywhere) — an O(nodes) bus storm per message. **Sharded pub/sub** (7.0: `SSUBSCRIBE`/`SPUBLISH`/`SUNSUBSCRIBE`, `pubsub.c:spublishCommand`) hashes the channel name like a key: messages route only to the channel's slot-owner shard and its replicas. Same registries, one extra slot check — built in ch. 36 once the bus exists, and required, because 7.0+ client libraries in cluster mode use `SSUBSCRIBE` by default.
 
 ## 31.5 Keyspace notifications
 
 `notify-keyspace-events` turns writes into pub/sub events on `__keyspace@0__:<key>` (what happened to this key) and `__keyevent@0__:<event>` (which key had this event) — e.g. every `expired`, `evicted`, `set`, `lpush`. Off by default (costs a publish per write). Implementation: one `notifyKeyspaceEvent(type, event, key)` call at — say it with me — the keyspace choke point. Build in ch. 33: it's ~30 lines *because* the choke point exists, and it makes chaos tests observable (`SUBSCRIBE __keyevent@0__:expired` is how you watch your active-expiry cycle work in real time).
 
-## 31.6 Lua scripting in one box (ch. 39)
+## 31.6 Lua scripting, previewed (built in ch. 39–40)
 
-`EVAL script numkeys k… arg…` runs Lua atomically server-side, calling back via `redis.call`. Semantics you'd need to honor: scripts must declare keys (cluster slot checking), block everything while running (`busy-script` + SCRIPT KILL for read-only scripts), and **propagate by effects** (§20.4 — modern Redis replicates the writes the script performed, not the script text; deterministic-script requirements are the legacy regime). `SCRIPT LOAD`/`EVALSHA` cache by SHA1. Functions (`FUNCTION`, 7.x) are the librarified successor. Go build via a pure-Go Lua (e.g. gopher-lua) — the instructive part is the effects-propagation plumbing, which you'll have from ch. 30.
+`EVAL script numkeys k… arg…` runs Lua atomically server-side, calling back via `redis.call`. It is the third answer to the read-modify-write question this chapter opened with — after WATCH and after "you can't" — and chapters 39 and 40 build it in full. Preview the two facts that matter here: a script is atomic for the same reason `EXEC` is (one execution context, held), and it **propagates by effects** (§20.4), so what reaches the replica is the writes the script performed, never the script text. Everything you built in this chapter — the queue-then-run shape, the propagation batch, the deferred wakeups — is reused verbatim.
 
 ## Self-check — Chapter 31
 
@@ -2277,9 +2214,6 @@ Cluster wrinkle: plain `PUBLISH` must broadcast to **every node** in the cluster
 
 # Chapter 32 — Reading the source: MULTI, blocking, and pub/sub
 
-> ### What to do with this chapter
-> **Read the real Redis source**, following the tour here. No code of your own.
->
 > **Time:** 1.5 h · **Before you start:** Chapter 31.
 >
 > **You're done when:** You can explain the two-phase ready-keys wakeup.
@@ -2292,10 +2226,7 @@ What you steal: dirty-CAS flag mechanics; ready-keys two-phase wakeup; the propa
 
 # Chapter 33 — Build: transactions, blocking, pub/sub
 
-> ### What to do with this chapter
-> **Build it.** ~25 h of code.
->
-> **Time:** 25 h · **Before you start:** Chapters 31 and 32.
+> **Time:** 27 h · **Before you start:** Chapters 31 and 32.
 >
 > **You're done when:** 1000 scripted WATCH races produce exactly one winner each, and BLPOP wakes on the push.
 
@@ -2307,7 +2238,8 @@ What you steal: dirty-CAS flag mechanics; ready-keys two-phase wakeup; the propa
 - **MULTI**: flags + queue on the Client (fields exist since ch. 7); dispatch gate: in-MULTI × not-{EXEC,DISCARD,MULTI,WATCH,RESET} → validate-and-queue (+QUEUED / flag DIRTY_EXEC on validation error). EXEC: gates (DIRTY_EXEC → EXECABORT; DIRTY_CAS → null), then run the queue inline as one engine message; wrap propagation in MULTI/EXEC (via the effect mechanism — a batch effect).
 - **WATCH**: `watched_keys` dict on the db + list on client; `touchWatchedKey` in the ch. 11 hook slot; fires on every effective write **including expiry and eviction deletes** (they already funnel — reward). UNWATCH + auto-unwatch after EXEC. Cross-db WATCH if you did SELECT — or reject WATCH on db>0, documented.
 - **Blocking**: registry per §31.3 (`blocking_keys`, `ready_keys`); the two-phase wake (signal at choke point → serve after current message completes — in engine terms: collect ready keys during dispatch, process them at message tail, before AOF flush hooks); FIFO per key; timeout wheel = simplest: check blocked clients in cron tick (100 ms granularity is fine; Redis is similar). Propagate the effective pop (§13.3). BLPOP/BRPOP/BLMOVE + WAIT (blocks on ack offsets — replication integration test in one command); then BLMPOP/BZPOPMIN/BZPOPMAX/BZMPOP — same registry, different pop function (the zset ones signal-ready from ZADD, proving the choke point generalizes).
-- **Pub/sub**: two registries (channels, patterns — pattern match with your ch. 11 glob), publish = immediate buffer pushes + count reply; RESP2 subscriber-mode restriction; PUBSUB CHANNELS/NUMSUB/NUMPAT introspection; propagate PUBLISH to replicas (subscribers on replicas hear it — test).
+- **Pub/sub**: two registries (channels, patterns — pattern match with your ch. 11 glob), publish = immediate buffer pushes + count reply; PUBSUB CHANNELS/NUMSUB/NUMPAT introspection; propagate PUBLISH to replicas (subscribers on replicas hear it — test). **Protocol split**: in RESP2 a subscribed client enters restricted mode (only [P]SUBSCRIBE/[P]UNSUBSCRIBE/PING/QUIT/RESET), and messages arrive as ordinary arrays; in RESP3 there is no restriction and messages arrive as **push frames** — the frame type your ch. 7 serializer already emits, finally used. Both behaviours, selected by the connection's `HELLO` version, and both diffed.
+- **`RESET`**: one command that unwinds everything a connection accumulated — discards MULTI state, UNWATCHes, exits subscriber mode, unsets the client name, resets the protocol to RESP2, deauthenticates, and returns `+RESET`. It is trivial and it is what client-library connection pools call before returning a connection to the pool, so a missing `RESET` shows up as bizarre cross-request state bugs in somebody else's code.
 - **Notifications**: `notify-keyspace-events` config parsing (the flag-letters), `notifyKeyspaceEvent` in the hook slot, events per command class as documented. ~30 lines *because* the architecture (told you in §31.5).
 
 ## 33.2 Done-when
@@ -2333,14 +2265,11 @@ tests/harness/diff.sh tests/ch33_multi.txt      # queue/abort/dirty matrices vs 
 
 # Chapter 34 — Cluster
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 4 h · **Before you start:** Chapter 33.
 >
 > **You're done when:** You can explain MOVED versus ASK and what each does to the client's slot map.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | Redis docs: "Scale with Redis Cluster" (`redis.io/topics/cluster-tutorial`) + "Redis cluster specification" (`redis.io/topics/cluster-spec`) — the spec is the assignment | 2 h |
@@ -2402,7 +2331,11 @@ Epoch collisions (two masters claiming the same configEpoch, possible after resh
 
 ## 34.6 What you build in ch. 36
 
-Full slots/MOVED/ASK/resharding + gossip + FAIL conviction + the replica election, with real config epochs. Skipped: the binary wire format byte-compatibility (your bus can be your own encoding — the *protocol logic* is the lesson), cluster pub/sub, and `cluster-allow-reads-when-down` refinements. A 6-node local cluster surviving `kill -9` of a master, with `redis-cli -c` (against your ports) following redirects — that's the exit demo.
+Full slots/MOVED/ASK/resharding + gossip + FAIL conviction + the replica election with real config epochs, plus cluster-wide `PUBLISH` and sharded pub/sub (`SSUBSCRIBE`/`SPUBLISH`), because 7.0+ client libraries in cluster mode send the sharded forms by default.
+
+**One deliberate incompatibility**: the bus's *wire format*. You implement the protocol's logic over your own node-to-node encoding rather than reproducing `clusterMsg` byte for byte. Clients never speak the bus, so an all-DiceMe cluster is a complete replacement from every client's point of view; a *mixed* DiceMe/Redis cluster is not. Write that sentence in your README (§48.4 makes you) rather than letting someone discover it. Byte-compatibility is a well-scoped ~20 h follow-on if you ever need it.
+
+A 6-node local cluster surviving `kill -9` of a master, with `redis-cli -c` following redirects — that's the exit demo.
 
 ## Self-check — Chapter 34
 
@@ -2417,9 +2350,6 @@ Full slots/MOVED/ASK/resharding + gossip + FAIL conviction + the replica electio
 
 # Chapter 35 — Reading the source: cluster and Sentinel
 
-> ### What to do with this chapter
-> **Read the real Redis source**, following the tour here. No code of your own.
->
 > **Time:** 2.5 h · **Before you start:** Chapter 34.
 >
 > **You're done when:** You can name the three gates on granting a failover vote.
@@ -2427,7 +2357,7 @@ Full slots/MOVED/ASK/resharding + gossip + FAIL conviction + the replica electio
 
 ## Cluster & Sentinel (2.5 h)
 
-Read: `cluster.c`: `getNodeByQuery` (the whole redirect brain); `cluster_legacy.c`: `clusterProcessPacket` (top switch), `clusterSendPing` (gossip-section sampling), `markNodeAsFailingIfNeeded` (PFAIL→FAIL), `clusterHandleSlaveFailover` (election, rank delay, epoch bump), `clusterHandleConfigEpochCollision`; `crc16.c` (your port is 30 lines). Sentinel (only if doing ch. 39's build): `sentinelCheckObjectivelyDown`, `sentinelStartFailover` + the state machine around it.
+Read: `cluster.c`: `getNodeByQuery` (the whole redirect brain); `cluster_legacy.c`: `clusterProcessPacket` (top switch), `clusterSendPing` (gossip-section sampling), `markNodeAsFailingIfNeeded` (PFAIL→FAIL), `clusterHandleSlaveFailover` (election, rank delay, epoch bump), `clusterHandleConfigEpochCollision`; `crc16.c` (your port is 30 lines). Sentinel (the spec for your ch. 45 build): `sentinelCheckObjectivelyDown`, `sentinelStartFailover` + the state machine around it.
 What you steal: `getNodeByQuery` logic; PFAIL/FAIL conviction rules; election gates; the epoch-collision tiebreak.
 
 ---
@@ -2435,10 +2365,9 @@ What you steal: `getNodeByQuery` logic; PFAIL/FAIL conviction rules; election ga
 
 # Chapter 36 — Build: cluster — the second wall
 
-> ### What to do with this chapter
-> **Build it.** ~55 h of code. The second wall.
+> The second wall.
 >
-> **Time:** 55 h · **Before you start:** Chapters 34, 35, and a working chapter 30.
+> **Time:** 59 h · **Before you start:** Chapters 34, 35, and a working chapter 30.
 >
 > **You're done when:** Six nodes, `kill -9` a master, automatic failover, and `redis-cli -c` follows redirects throughout.
 
@@ -2452,7 +2381,8 @@ What you steal: `getNodeByQuery` logic; PFAIL/FAIL conviction rules; election ga
 3. **Conviction**: PFAIL by timeout → gossip carries others' PFAILs → majority of masters → FAIL broadcast. (Your SWIM toy's suspicion machinery, renamed.)
 4. **Resharding**: IMPORTING/MIGRATING states; ASK/ASKING; `CLUSTER GETKEYSINSLOT`; MIGRATE as DUMP→RESTORE→DEL (your RDB value-serializer from ch. 23 *is* DUMP's payload format — reward); `SETSLOT NODE` with epoch bump; a `dice-cli-reshard` script driving it live under storm.
 5. **Failover**: cluster replicas = ch. 30 replication + bus membership; election per §34.5 (rank delay, masters-only votes, epoch gates, majority); promotion claims slots with new configEpoch; UPDATE messages fix stale nodes; epoch-collision tiebreak.
-6. **Chaos drills.**
+6. **Cluster pub/sub**: plain `PUBLISH` broadcast over the bus to every node, then sharded pub/sub — `SSUBSCRIBE`/`SUNSUBSCRIBE`/`SPUBLISH` routed by `slot(channel)` to the shard's master and its replicas, plus `PUBSUB SHARDCHANNELS|SHARDNUMSUB`. Same registries as ch. 33, one slot check (§31.4).
+7. **Chaos drills.**
 
 ## 36.2 Done-when
 
@@ -2464,6 +2394,7 @@ tests/ch36_reshard.sh 100         # move 100 slots live under storm: zero client
 kill -9 <master2>                   # ≤ node-timeout+2s later: its replica promoted, cluster_state:ok, writes flow; old master returns → demotes to replica (log shows epoch reasoning)
 # partition drill (iptables/pf or a --drop-peer test hook): minority master's clients get errors after timeout (cluster-require-full-coverage both settings tested); heal → converge; count lost writes; write the number in NOTES.md next to §27.6
 # gossip convergence: node 7 MEETs node 1 only; knows all slots+nodes < 5s
+# pub/sub: PUBLISH on any node reaches a subscriber on any other; SPUBLISH reaches only the slot's shard
 ```
 
 ## 36.3 Traps
@@ -2487,20 +2418,17 @@ High availability, the operational surface, and the à-la-carte menu of everythi
 
 # Chapter 37 — Sentinel
 
-> ### What to do with this chapter
-> **Read it.** No code.
->
 > **Time:** 2 h · **Before you start:** Chapter 36.
 >
 > **You're done when:** You can explain SDOWN versus ODOWN and why acting needs a majority.
 >
-> ### 📚 Required reading for this chapter
+> ### 📚 Required reading
 > | Read this | Time |
 > |---|---|
 > | Redis docs: "High availability with Redis Sentinel" — `redis.io/topics/sentinel`; full read; the "consistency under partitions" example especially | 1 h |
 > | `sentinel.c`: `sentinelCheckObjectivelyDown`, `sentinelStartFailover`, and the failover state machine around `sentinelFailoverStateMachine` | 45 min |
 
-Sentinel is the HA layer for non-cluster Redis: N sentinel processes (run ≥3, odd) monitor masters, agree on failure, and orchestrate promotion. It is a *separate process* reusing the redis binary (`redis-sentinel`), and it is ch. 39 stretch — but read this now, because it completes the replication story and contrasts beautifully with ConsulMe.
+Sentinel is the HA layer for non-cluster Redis: N sentinel processes (run ≥3, odd) monitor masters, agree on failure, and orchestrate promotion. It is a *separate process* reusing the redis binary (`redis-sentinel`); you build `dice-sentinel` in ch. 45, and this chapter is that chapter's specification.
 
 ## 37.1 Detection: SDOWN vs ODOWN
 
@@ -2520,7 +2448,7 @@ The leader then (state machine in `sentinel.c`):
 3. Reconfigures other replicas: `REPLICAOF <new master>`.
 4. Bumps the **config epoch**; broadcasts the new map via hello messages. Higher epoch wins all future conflicts — the old master, on return, receives `REPLICAOF` from any sentinel with the newer epoch and demotes (losing its divergent writes — §27.6).
 
-Clients discover the current master by asking any sentinel (`SENTINEL get-master-addr-by-name`) and re-ask on disconnect — client libraries implement this; your ch. 39 build includes a 50-line Go client that does.
+Clients discover the current master by asking any sentinel (`SENTINEL get-master-addr-by-name`) and re-ask on disconnect — client libraries implement this; your ch. 45 build includes a 50-line Go client that does.
 
 ## 37.3 What Sentinel is not
 
@@ -2538,21 +2466,20 @@ Not consensus over data — only over *who is master*; the data-loss windows of 
 
 # Chapter 38 — Production-grade concerns
 
-> ### What to do with this chapter
-> **Read it, then harden your server** against the checklist. Roughly 2 h reading, 15 h of work.
+> Roughly 2 h reading, 15 h of work.
 >
 > **Time:** 17 h · **Before you start:** Chapter 37.
 >
 > **You're done when:** Metrics, every limit in §38.2, and the chaos script are all in place.
 
 
-Do these during ch. 39, but *read* now — several change earlier designs cheaply.
+Do the work of this chapter alongside Part IX, but *read* it now — several items change earlier designs cheaply, and the limits in §38.2 are what keep the Part IX chaos drills honest.
 
 ## 38.1 Observability
 
 - **INFO complete**: all sections real Redis emits (server, clients, memory, persistence, stats, replication, cpu, keyspace) with the fields your subsystems already track. `INFO everything` is your ops UI; treat gaps as bugs.
 - **MONITOR**: flag on client; choke point already sees every command — stream them (`+<ts> [db addr] "SET" "k" …`). 20 lines; unreasonably useful for debugging *your own* server. (Warn: real MONITOR halves throughput; yours will too; that's authentic.)
-- **Metrics**: instantaneous ops/sec (rolling window), hit/miss ratio, expired/evicted counters, connected clients/replicas, repl offset lag, AOF buffer size, fork/snapshot pause ms. Exporter per ch. 39 menu.
+- **Metrics**: instantaneous ops/sec (rolling window), hit/miss ratio, expired/evicted counters, connected clients/replicas, repl offset lag, AOF buffer size, snapshot pause ms. Wire the `monitoring/` directory you already have: a `/metrics` HTTP listener translating `INFO` fields, and the existing Grafana dashboards pointed at DiceMe. The storm-plus-dashboard demo is the best show-someone artifact in the repo, and it costs about six hours.
 - **Logs**: structured (`slog`), one line per state *transition* (ch. 28), loglevel config.
 
 ## 38.2 Limits — every one is a production incident you're pre-empting
@@ -2566,7 +2493,7 @@ Full registry: every config has {name, type, default, validator, dynamic?, apply
 
 ## 38.4 Protections & security basics
 
-`protected-mode` (refuse non-loopback when no password) · `requirepass`/AUTH (+ AUTH gate in dispatch — you built the slot for it in ch. 7) · `rename-command`-style disabling (config to remove FLUSHALL/DEBUG from the table) · never log values (audit your logs — key names ok, values no) · CLIENT KILL/LIST/PAUSE (PAUSE is a fun one under the engine model: just stop dequeuing — and a WAIT/failover primitive in real Redis).
+The full security surface — AUTH, ACLs with selectors, TLS, `protected-mode`, command disabling, the `CLIENT KILL`/`PAUSE` family — is chapters 46 and 47. What belongs *here*, now, is the operational half: never log values (audit your logs — key names fine, values never), keep the AUTH gate slot in the dispatch sequence you built in ch. 7 wired to a no-op so ch. 47 is an insertion rather than a restructure, and make sure `protected-mode`'s default is on before you ever bind to a non-loopback address on a shared machine.
 
 ## 38.5 Benchmark honestly
 
@@ -2578,38 +2505,475 @@ Full registry: every config has {name, type, default, validator, dynamic?, apply
 
 ---
 
-# Chapter 39 — Build: the stretch menu
+# PART IX — THE REST OF REAL REDIS
 
-> ### What to do with this chapter
-> **Build whichever items you want.** Nothing here is required.
+Everything a client can still ask for that you have not built: server-side scripting, streams, the bit/cardinality/geo command families, Sentinel, the security surface — and the sweep that proves a real client library cannot tell DiceMe from Redis.
+
+Nothing in this part is optional. Chapters 1–38 give you a correct Redis; this part gives you a *complete* one, and completeness is the difference between a study project and a replacement.
+
+---
+
+# Chapter 39 — Scripting: Lua and Functions
+
+> **Time:** 3 h · **Before you start:** Chapter 38.
 >
-> **Time:** à la carte · **Before you start:** Everything above.
+> **You're done when:** You can say what a script that calls `SPOP` twice sends to the replica, and why.
 >
-> **You're done when:** N/A — pick items and stop when you want to.
+> ### 📚 Required reading
+> | Read this | Time |
+> |---|---|
+> | Redis docs: "Scripting with Lua" and "Redis Functions" (`redis.io/docs/latest/develop/programmability/`) — the whole programmability section | 1 h |
+> | `script.c`: `scriptPrepareForRun`, `scriptCall`, the flags block; `script_lua.c`: `luaRedisCallCommand`, `luaReplyToRedisReply`, `luaRegisterRedisAPI` | 1 h |
+> | `functions.c`: `functionsRegisterEngine`, `fcallCommand`, `functionsSaveRio`; `function_lua.c` skim | 30 min |
 
+## 39.1 The problem scripting solves
 
-Pick à la carte; each is independent. Rough effort attached.
+The WATCH loop (§31.1) costs a round trip per retry and cannot express "read this, decide, then write" without the client in the middle. `EVAL` moves the decision to the server: one round trip, atomic by construction, arbitrary logic. It is the reason Redis is used as a coordination primitive at all — every distributed lock, token bucket, and leaderboard-with-tiebreak library on your disk is a Lua script.
 
-| Feature | Effort | What it teaches / notes |
-|---|---|---|
-| **Sentinel** (§ch. 37) | 25 h | Separate `dice-sentinel` binary: monitor, SDOWN/ODOWN quorum, hello-channel discovery, leader vote, failover orchestration + the 50-line Go client. Best pick if you skipped Cluster. |
-| **Geospatial** (GEOADD/GEOPOS/GEODIST/GEOHASH/GEOSEARCH/GEOSEARCHSTORE + legacy GEORADIUS forms) | 12 h | §15.9: Morton-interleaved 52-bit geohash as zset score; 9-cell neighbor search → range scans + haversine filter. Zero new storage — the best "map a query onto an existing index" lesson in the codebase. `geo.c`, `geohash.c`, `geohash_helper.c`. |
-| **Streams** (XADD/XRANGE/XREVRANGE/XLEN/XREAD[+BLOCK]/XTRIM/XDEL/XSETID + groups: XGROUP/XREADGROUP/XACK/XPENDING/XCLAIM/XAUTOCLAIM/XINFO) | 30 h | Your `ds/rax` build + consumer-group semantics (PEL, delivery counts, MAXLEN~ approximate trimming). The durable pub/sub. |
-| **Hash field TTLs** (7.4: HEXPIRE/HPEXPIRE/HEXPIREAT/HPEXPIREAT/HTTL/HPTTL/HPERSIST/HGETEX/HGETDEL) | 10 h | Per-*field* expiry inside one value — forces per-field metadata (`t_hash.c` HFE sections, `listpackex` encoding) and a second expiry index; the same ch. 9 contract one level down. |
-| **SORT / SORT_RO** (BY/GET pattern deref, ALPHA, LIMIT, STORE) | 6 h | `sort.c:sortCommandGeneric`; the closest thing Redis has to a join; pattern-dereference (`weight_*`, `GET obj_*->field`) is a lovely gnarly parser exercise. |
-| **Lua scripting** (EVAL/EVALSHA/SCRIPT) + **Functions** (FUNCTION LOAD/LIST/CALL — the 7.0 librarified successor) via gopher-lua | 15 h | Effects propagation (have it), script cache, `redis.call` bridge, busy-script + kill. |
-| **RESP3** (HELLO 3, typed replies, push frames) | 10 h | The §4.7 serializer swap; big-payoff-per-hour; unlocks client tracking. |
-| **Client tracking / CSC** (CLIENT TRACKING, invalidation push) | 10 h | Needs RESP3. The keyspace choke point fires invalidations — 30 lines, again. |
-| **ACLs** (users, command/key patterns, AUTH) | 12 h | A dispatch gate + config surface. Mechanical. |
-| **SLOWLOG + LATENCY** | 6 h | Ring buffer of slow calls (time each eval — you already do for stats); LATENCY HISTORY/RESET; pairs with monitoring below. |
-| **Prometheus exporter** for your `monitoring/` dir | 6 h | `/metrics` HTTP listener translating INFO fields; wire the existing Grafana dashboards to DiceMe; the storm + dashboard demo is the best show-someone artifact in the repo. |
-| **Bitmaps** (SETBIT/GETBIT/BITCOUNT/BITPOS/BITOP + **BITFIELD** with u/i types, OVERFLOW WRAP\|SAT\|FAIL) | 10 h | Bit-twiddling on raw-encoded strings (`bitops.c:bitfieldGeneric`); BITFIELD is a miniature typed VM over a byte array. |
-| **HyperLogLog** (PFADD/PFCOUNT/PFMERGE) | 15 h | Flajolet's paper + Redis's dense/sparse register encodings (`hyperloglog.c`); cardinality in 12 KB — the most magical 300 lines you'll write. |
-| **Replication extras** (WAITAOF; `FAILOVER` — coordinated, loss-less manual failover) | 8 h | FAILOVER choreography (pause writes → wait replica catch-up → swap roles) is WAIT + PAUSE + PSYNC composed; a mini-Sentinel in one command. |
-| **Sharded pub/sub** (SSUBSCRIBE/SPUBLISH/SUNSUBSCRIBE) | 4 h | §31.4's cluster fix; needs ch. 36's bus. |
-| **Misc small commands** (TIME, SUBSTR, MOVE, SWAPDB, LOLWUT, OBJECT REFCOUNT, MEMORY STATS\|DOCTOR, CLIENT UNPAUSE\|NO-TOUCH) | 4 h | Afternoon fillers; TIME and SUBSTR are ten-liners — do them with morning coffee. |
-| **io-threads → real parallel-parsing benchmark** | 4 h | Measure your free io-threads claim (§2.3); README material. |
-| **Active defrag analog / memory doctor** | — | Read `defrag.c`; write the "why Go can't/needn't" note instead. Cheapest deep insight per hour in the list. |
+## 39.2 The execution contract
+
+Six rules; each one is a build requirement.
+
+1. **Atomic.** The script runs to completion with nothing interleaved — the same guarantee `EXEC` gives, for the same reason. In C it's the single thread; in DiceMe it is one engine message that happens to run a long time. Free, and dangerous: a slow script stalls every client, which is why §39.3 exists.
+2. **Keys are declared.** `EVAL script numkeys key [key…] arg [arg…]`. The declared keys are what cluster mode slot-checks (§34.1) and what ACLs authorize (ch. 46). Outside cluster mode Redis does **not** enforce that the script only touches declared keys — it trusts you, exactly as §1.2 says it does. Reproduce that: check in cluster mode, trust outside it.
+3. **Effects replication.** Since 7.0 the script text is never propagated. The writes the script performed are wrapped in `MULTI`/`EXEC` and propagated as ordinary commands, canonicalized per §20.4. Two `SPOP`s inside a script become two `SREM`s with the actual members. This is why chapter 30's propagation design carries the whole feature: if your eval layer already returns `(reply, effect)`, scripting is plumbing.
+4. **`redis.call` vs `redis.pcall`.** `call` raises on error, aborting the script and returning that error to the client; `pcall` returns an error table the script can inspect. Errors from a script are prefixed so clients can tell them apart.
+5. **The conversion table**, which you must implement exactly in both directions:
+
+   | Lua → RESP | RESP → Lua |
+   |---|---|
+   | number → integer (**truncated**, `3.7` becomes `:3`) | integer → number |
+   | string → bulk string | bulk string → string |
+   | table → array, **stopping at the first `nil`** | array → table |
+   | table with `ok` field → simple status | status → table with `ok` |
+   | table with `err` field → error | error → table with `err` |
+   | `false` → null | null → `false` |
+   | `true` → `:1` | — |
+
+   `redis.setresp(3)` switches the script's view to RESP3, adding `map`, `set`, `double`, and `big_number` table forms. Build RESP2 conversion first, then the RESP3 additions — your ch. 7 logical-reply layer makes the second one a switch statement.
+6. **The API surface**: `redis.call`, `redis.pcall`, `redis.error_reply`, `redis.status_reply`, `redis.sha1hex`, `redis.log`, `redis.setresp`, `redis.breakpoint`/`redis.debug` (stubs are fine), `redis.set_repl` (selective effect replication), `redis.REPL_ALL|REPL_AOF|REPL_REPLICA|REPL_NONE`, and the `KEYS`/`ARGV` globals.
+
+## 39.3 The busy-script problem
+
+A script that loops forever holds the only execution context. Redis's answer: after `busy-reply-threshold` milliseconds (5000 default; the old name `lua-time-limit` is still accepted), the server starts answering **other** clients `-BUSY Redis is busy running a script...` and accepts only `SCRIPT KILL`, `FUNCTION KILL`, and `SHUTDOWN NOSAVE`. `SCRIPT KILL` succeeds only if the script has **not written yet** — after a write, killing it would leave a half-applied non-atomic effect, so the only exit is `SHUTDOWN NOSAVE`, losing the writes rather than corrupting the log.
+
+Under the engine-goroutine model this is the one place your architecture is *worse* than C's: you cannot poll the socket mid-script from inside the engine. The build (§40.2) solves it with a Lua instruction hook that checks an atomic kill flag and an elapsed-time counter — the same shape as C's `luaMaskCountHook`.
+
+## 39.4 Script cache versus Functions
+
+**Scripts** are cached by SHA1: `SCRIPT LOAD` returns the digest, `EVALSHA <sha>` runs it, a miss returns `-NOSCRIPT`. The cache is *not* persisted and *not* replicated — client libraries handle `NOSCRIPT` by re-sending the body. `SCRIPT EXISTS`, `SCRIPT FLUSH [ASYNC|SYNC]`, `SCRIPT KILL` complete the surface. `EVAL_RO`/`EVALSHA_RO` refuse writes, which is what lets a replica serve them.
+
+**Functions** (7.0) are the fix for everything the SHA1 cache got wrong. `FUNCTION LOAD` registers a named **library** whose functions declare flags (`no-writes`, `allow-oom`, `allow-stale`, `no-cluster`); `FCALL name numkeys …` invokes one. Libraries are **persisted in RDB and replicated** — they are part of the dataset, not per-connection state. `FUNCTION LIST|DELETE|FLUSH|DUMP|RESTORE|STATS|KILL` round it out, and `FUNCTION DUMP`'s payload rides in the RDB, which is why chapter 23 has to know about it.
+
+## Self-check — Chapter 39
+
+1. A script does `SPOP s` then `SET k <result>`. Exactly what bytes reach the replica, and why not the script text?
+2. Why can `SCRIPT KILL` refuse? What is the only remaining exit, and what does it cost?
+3. `return 3.7` and `return {1, nil, 3}` — what does the client receive for each?
+4. Why are Functions replicated and persisted while the script cache is neither? Name the client-side bug that design removes.
+5. Which two subsystems consume a script's declared key list, and what does each do with it?
+
+---
+
+# Chapter 40 — Build: scripting
+
+> **Time:** 30 h · **Before you start:** Chapter 39.
+>
+> **You're done when:** `tests/ch40_script.txt` diffs clean, a runaway script is killable, and a script's writes reach a replica as canonical effects wrapped in MULTI/EXEC.
+
+**Goal**: `EVAL`/`EVALSHA`(+`_RO`), the `SCRIPT` subcommands, the full `FUNCTION` surface, effects propagation, and the busy/kill machinery. One dependency joins the project here: a pure-Go Lua (`gopher-lua`) — the §6.1 exception, and the only one.
+
+## 40.1 Order of work
+
+1. **The bridge.** Embed the interpreter; register `redis.call`/`pcall` as Go functions that build a `[][]byte` argv and re-enter your dispatcher with a fake client (ch. 7's `NewDetachedClient`, now earning its third keep after AOF load and replication). Conversion both directions per §39.2's table, RESP2 only.
+2. **The sandbox.** Remove `io`, `os`, `loadfile`, `dofile`, `require`, `package`, `print`, `collectgarbage`; freeze the global table so a script cannot create globals (real Redis errors `Script attempted to create global variable`); seed `math.random` deterministically per script invocation. Fuzz it: a script must never panic the server, and `go test -fuzz` on the script body is cheap insurance.
+3. **`EVAL`/`EVALSHA`/`SCRIPT`.** SHA1 cache map, `-NOSCRIPT` error text byte-exact, `EVAL_RO`/`EVALSHA_RO` rejecting writes via the `CmdWrite` flag from ch. 7's table (reward collected again).
+4. **Effects propagation.** Open a propagation batch before the script, collect every effect the nested dispatches produce, close it, and emit `MULTI … EXEC` if the batch is non-empty (a single-command batch propagates bare — match real Redis). `redis.set_repl` filters the batch. Verify on a live replica, not by reading your own code.
+5. **Busy and kill.** A Lua instruction hook (`SetHook` every N instructions) checks elapsed time and an atomic kill flag. Past `busy-reply-threshold`, the engine must still answer other clients — so the script runs on its own goroutine while the engine loop stays alive answering `-BUSY` to everything except `SCRIPT KILL`/`FUNCTION KILL`/`SHUTDOWN NOSAVE`. **This is the one place a command does not run inside the engine goroutine**; the engine is *blocked on the script's completion channel* rather than executing, so atomicity holds — but write the invariant down in `NOTES.md`, because it is the single exception to §2.4 in the whole project.
+6. **Functions.** Library registration and the `redis.register_function` callback, per-function flags, `FCALL`/`FCALL_RO`, the `FUNCTION` subcommands, and the RDB carriage: functions serialize into the RDB (opcode `0xF5`, §20.2) and load before the keyspace. `FUNCTION DUMP`/`RESTORE` reuse that serializer.
+7. **Cluster and ACL hooks**: in cluster mode, all declared keys must hash to one slot (`-CROSSSLOT`); pass the declared keys to the ACL check once chapter 47 lands (leave the call site now).
+
+## 40.2 Done-when
+
+```bash
+tests/harness/diff.sh tests/ch40_script.txt     # conversion matrix, error texts, NOSCRIPT, EVAL_RO refusals
+redis-cli -p 7379 EVAL "return redis.call('SET', KEYS[1], ARGV[1])" 1 k v   # +OK
+redis-cli -p 7379 EVAL "return {1, nil, 3}" 0                               # 1) (integer) 1   — stops at nil
+redis-cli -p 7379 EVAL "return 3.7" 0                                        # (integer) 3
+# effects: script does SPOP twice; replica's MONITOR shows MULTI, SREM <member>, SREM <member>, EXEC
+# busy/kill: EVAL "while true do end" 0 in one client → other clients get -BUSY after 5s → SCRIPT KILL works
+# busy/kill after write: script writes then loops → SCRIPT KILL refused (-UNKILLABLE), SHUTDOWN NOSAVE exits
+# functions survive a restart: FUNCTION LOAD ; DEBUG RELOAD ; FCALL still resolves
+# functions replicate: FUNCTION LOAD on master → FUNCTION LIST on replica shows it
+go test -fuzz=FuzzEvalBody -fuzztime=60s ./core/script/   # no panics, no sandbox escape
+```
+
+## 40.3 Traps
+
+- Building a second propagation path "just for scripts" — the §30.4 trap in a new costume. One effect stream, one producer, always.
+- Forgetting that a nested `redis.call` can itself trigger expiry, eviction, or a blocked-client wakeup. Wakeups must be deferred to the end of the *script*, not the end of the inner command (same two-phase rule as §31.3, one level up).
+- `KEYS`/`ARGV` must be fresh per invocation; a leaked global between invocations is a correctness bug and an information leak between clients.
+- Truncation, not rounding: `return 3.7` is `:3` and `return -3.7` is `:-3`. Diff it.
+
+---
+
+# Chapter 41 — Streams
+
+> **Time:** 3 h · **Before you start:** Chapter 40.
+>
+> **You're done when:** You can explain what the PEL is, who owns an entry after `XAUTOCLAIM`, and why `XADD` IDs are two numbers rather than one.
+>
+> ### 📚 Required reading
+> | Read this | Time |
+> |---|---|
+> | Redis docs: "Redis Streams" intro + the consumer-groups tutorial (`redis.io/docs/latest/develop/data-types/streams/`) | 1 h |
+> | `t_stream.c`: the file's macro-node comment, `streamAppendItem`, `streamIteratorStart`/`Next`, `streamCreateConsumerGroup`, `streamReplyWithRange`, `xautoclaimCommand` | 1.5 h |
+> | `rax.c` header comment (the compressed-radix-tree format) — you build this in ch. 17 | 30 min |
+
+## 41.1 The data type
+
+A stream is an **append-only log of field/value maps**, each stamped with a monotonic ID `<milliseconds>-<sequence>`. Two numbers, because a millisecond can hold many entries and IDs must be totally ordered and generated server-side without a clock guarantee: same ms → bump the sequence. `XADD s '*' field value …` auto-generates; `XADD s 5-*` fixes the ms and auto-sequences; an explicit ID must be strictly greater than the last one (`-ERR The ID specified in XADD is equal or smaller than the target stream top item`).
+
+Storage is a **rax** keyed by the 128-bit ID, whose values are **listpack macro-nodes**: each node packs many entries sharing a field-name template, so a stream of uniform-shaped entries costs a few bytes per entry rather than a map per entry. This is §14.1's argument taken to its conclusion, and it is why `ds/rax` and `ds/listpack` are both prerequisites.
+
+Beyond the entries, a stream carries metadata that the commands expose and the RDB must round-trip: `last-id`, `entries-added` (a monotonic counter, never decremented by deletion), `max-deleted-entry-id`, and the entry count. Deletion (`XDEL`) leaves **tombstones** in the macro-node rather than rewriting it, so `XLEN` and `entries-added` diverge deliberately.
+
+## 41.2 Trimming
+
+`XTRIM s MAXLEN 1000` and `XTRIM s MINID <id>`, plus the same options inline on `XADD`. The `~` form (`MAXLEN ~ 1000`) is **approximate**: trim only whole macro-nodes, stopping when the next node would have to be split. That turns an O(N) rewrite into O(1) amortized and is the default advice — `LIMIT n` caps the work per call. Exact trimming is available and expensive; both must exist, and the diff harness must distinguish them (`XLEN` after `~` trimming is ≥ the requested length, which is *correct*).
+
+## 41.3 Reading: the two modes
+
+**Fan-out (`XREAD`).** Every reader sees every entry: `XREAD COUNT 10 STREAMS s <id>` returns entries after `<id>`. The special ID `$` means "only entries added after this call", which only makes sense with `BLOCK`. `XREAD BLOCK 0 STREAMS s $` is the blocking form and plugs straight into chapter 33's ready-keys registry — `XADD` signals the key ready, exactly like `RPUSH` does for `BLPOP`.
+
+**Consumer groups (`XREADGROUP`).** The durable variant, and the reason streams exist:
+
+- `XGROUP CREATE s g <id|$> [MKSTREAM]` creates a group with a **last-delivered-ID** cursor.
+- `XREADGROUP GROUP g c COUNT 10 STREAMS s >` delivers *new* entries to consumer `c`, advances the group cursor, and records each delivered entry in the **PEL** (Pending Entries List) — per-group and per-consumer, holding `(id, consumer, delivery-time, delivery-count)`.
+- `XACK s g <id…>` removes entries from the PEL: the acknowledgement that work completed.
+- `XREADGROUP … STREAMS s 0` re-delivers *this consumer's own* pending entries — crash recovery for a single consumer.
+- `XPENDING s g` (summary) and `XPENDING s g IDLE ms start end count [consumer]` (extended) inspect the PEL.
+- `XCLAIM s g newconsumer <min-idle-time> <id…>` transfers ownership of entries idle longer than the threshold — how a dead consumer's work is picked up. `XAUTOCLAIM s g newconsumer <min-idle> <start> [COUNT n]` is the cursor-driven bulk form (7.0), returning a next-cursor plus the list of entries it could not claim because they no longer exist.
+- `XGROUP CREATECONSUMER|DELCONSUMER|SETID|DESTROY`, and `XINFO STREAM [FULL]|GROUPS|CONSUMERS` for introspection.
+
+The delivery-count field is what lets a consumer build a dead-letter policy: claim, see `delivery-count > N`, `XACK` and route elsewhere. Redis provides the counter and no policy — §1.2 again.
+
+## 41.4 What streams are not
+
+Not exactly-once: `XREADGROUP` delivers, then your process may die before `XACK`, so the entry is redelivered. At-least-once with an idle-based reclaim is the honest description, and the PEL is the entire mechanism. Not a queue with priorities, not a partitioned log — one stream is one ordered sequence, and sharding is your key schema's problem (§34.1).
+
+## Self-check — Chapter 41
+
+1. Why is a stream ID two numbers? What breaks with one?
+2. What does `entries-added` count that `XLEN` does not, and which command exposes the gap?
+3. Trace an entry through: `XADD` → `XREADGROUP` → consumer dies → `XAUTOCLAIM` → `XACK`. Name the structure holding it at each step.
+4. Why is `MAXLEN ~ 1000` the recommended form? What exactly does the `~` relax?
+5. What does `XREADGROUP … STREAMS s 0` return, and when would a consumer send it?
+6. Which chapter-33 mechanism does `XREAD BLOCK` reuse unchanged, and what signals it?
+
+---
+
+# Chapter 42 — Build: streams
+
+> **Time:** 35 h · **Before you start:** Chapters 41, and a working chapter 33 (blocking) and chapter 17 (`ds/rax`).
+>
+> **You're done when:** `tests/ch42_stream.txt` diffs clean, a killed consumer's entries are reclaimed by `XAUTOCLAIM`, and a stream round-trips through RDB and replication with its groups and PELs intact.
+
+**Goal**: the stream type on your rax + listpack, the full command surface, consumer groups with PEL semantics, blocking reads, and RDB/AOF/replication carriage.
+
+## 42.1 Order of work
+
+1. **The object.** `stream{rax *rax.Rax; last, maxDeleted streamID; added, length uint64; groups map[string]*group}`; macro-node encoding in listpack with the shared-field-template optimization (build the simple per-entry form first, add the template once the tests pass — the format is observable only through memory usage and RDB bytes).
+2. **Non-group commands**: `XADD` (ID generation and validation, `NOMKSTREAM`, inline trimming), `XLEN`, `XRANGE`/`XREVRANGE` (with `-`/`+` and exclusive `(` bounds, `COUNT`), `XDEL`, `XTRIM` (`MAXLEN`/`MINID`, exact and `~` with `LIMIT`), `XSETID` (with `ENTRIESADDED`/`MAXDELETEDID`).
+3. **`XREAD`**, then `XREAD BLOCK` through the chapter-33 registry: `XADD` calls `signalKeyAsReady`; the blocked client's resume point is the ID it asked from, so the wake handler must re-run the range query rather than hand over "the" entry (unlike `BLPOP`, several blocked readers all get the same entry — fan-out, not hand-off; test both).
+4. **Groups**: the group struct (`lastDelivered`, `pel` keyed by ID, `consumers` each with their own PEL view and `seen-time`), `XGROUP` subcommands, `XREADGROUP` (`>` versus explicit IDs, `NOACK`), `XACK`, `XPENDING` both forms, `XCLAIM` (with `IDLE`/`TIME`/`RETRYCOUNT`/`FORCE`/`JUSTID`), `XAUTOCLAIM` (cursor plus the deleted-ID list), `XINFO STREAM|GROUPS|CONSUMERS|STREAM FULL`.
+5. **Propagation** (§20.4, and the reason this chapter comes after ch. 30): `XADD s *` propagates with the **generated** ID, never `*`. `XREADGROUP` propagates `XCLAIM` entries so the replica's PEL matches. `XAUTOCLAIM` and `XCLAIM` propagate their resolved effects. Getting this wrong diverges the PEL silently, which is the stream-specific instance of the §28.7 bug list.
+6. **Persistence**: RDB value type for streams (entries as raw listpack macro-nodes, then group and PEL metadata); AOF gets the propagated forms for free. `DEBUG RELOAD` must preserve every group, consumer, and pending entry.
+
+## 42.2 Done-when
+
+```bash
+tests/harness/diff.sh tests/ch42_stream.txt   # ~600 lines: ID edge cases, ranges, trimming, groups, XINFO shapes
+# blocking fan-out: three clients XREAD BLOCK 0 … $ ; one XADD ; all three wake with the same entry
+# group hand-off: two consumers XREADGROUP > ; entries partitioned, never duplicated
+# reclaim: consumer A reads 10, dies; XAUTOCLAIM by B after min-idle → B owns them, delivery-count incremented
+# PEL survives: XREADGROUP ; DEBUG RELOAD ; XPENDING identical
+# PEL replicates: same XPENDING output on master and replica after a group workload
+# approximate trim: XADD ... MAXLEN ~ 1000 × 100k → XLEN >= 1000, and node count stays bounded
+```
+
+## 42.3 Traps
+
+- `XADD s *` propagated verbatim gives the replica a different ID and permanent divergence. This is the §20.4 lesson's sharpest edge; test it first, not last.
+- Tombstones: `XDEL` inside a macro-node must not renumber or shift IDs. `XRANGE` skips tombstones; `XINFO STREAM FULL` shows them.
+- `XAUTOCLAIM` must return the IDs it *dropped* (entries deleted since being pended) in its third reply element — clients use it to clean their own bookkeeping, and it is easy to omit until the diff harness catches it.
+- A group whose stream key is deleted disappears with it; `XGROUP CREATE` on a missing key errors unless `MKSTREAM`.
+
+---
+
+# Chapter 43 — Bitmaps, HyperLogLog, and geospatial
+
+> **Time:** 3 h · **Before you start:** Chapter 42.
+>
+> **You're done when:** You can explain why all three of these command families store their data in an ordinary string or zset, and what that buys.
+>
+> ### 📚 Required reading
+> | Read this | Time |
+> |---|---|
+> | `bitops.c`: `setbitCommand`, `bitcountCommand` (the `BIT`/`BYTE` range forms), `bitopCommand`, `bitfieldGeneric` | 45 min |
+> | `hyperloglog.c`: the header comment — it is a summary of the paper — then `hllSparseToDense`, `hllAdd`, `hllCount` | 1 h |
+> | **Flajolet, Fusy, Gandouet, Meunier, "HyperLogLog: the analysis of a near-optimal cardinality estimation algorithm"** (AofA 2007) — `algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf`; sections 1–4 | 1 h |
+> | §15.9 of this book, re-read, plus `geohash.c:geohashEncode` and `geohash_helper.c` | 30 min |
+
+Three command families, zero new storage types. That is the lesson binding them together, and it is the same lesson three times: **choose a representation you already have and map the query onto it.**
+
+## 43.1 Bitmaps: a string you address by bit
+
+`SETBIT k 7 1` grows the raw-encoded string to 1 byte and sets bit 7 (big-endian within the byte: bit 0 is the most significant). Everything follows: `GETBIT`, `BITCOUNT k [start end [BYTE|BIT]]`, `BITPOS k bit [start [end [BYTE|BIT]]]`, and `BITOP AND|OR|XOR|NOT dest src…` which operates on whole strings, zero-extending the shorter ones.
+
+Two build notes that are easy to get wrong and that the diff harness will find: **`SETBIT` forces `raw` encoding and zero-fills the gap** (setting bit 10,000,000 allocates 1.25 MB of zeros — that is the documented memory bomb, gated by `proto-max-bulk-len`), and **`BITCOUNT`'s default range unit is `BYTE`** while negative indexes count from the end.
+
+`BITFIELD` is the interesting one: a miniature typed VM over the byte array. `BITFIELD k SET u8 0 255 GET u8 0 INCRBY i5 100 -10 OVERFLOW SAT INCRBY i5 100 -10` executes a sequence of typed operations at bit offsets, with `u1…u63`/`i1…i64` types, `#`-prefixed offsets meaning "in units of the type width", and three overflow behaviours — `WRAP` (modular, default), `SAT` (clamp to the type's range), `FAIL` (return nil for that operation). `OVERFLOW` is a *mode switch* affecting subsequent operations in the same command, not an argument to one. `BITFIELD_RO` allows only `GET`, which is what makes it replica-safe.
+
+## 43.2 HyperLogLog: cardinality in 12 KB
+
+A HyperLogLog is a **plain Redis string** with a magic header, which is why `GET`/`SET` on a HLL key works and why `PFADD`'s output must be byte-compatible: other tools and other servers read these blobs.
+
+The algorithm: hash the element, use the first 14 bits to pick one of **16384 registers**, count the leading zeros in the remaining bits, and keep the maximum leading-zero count per register. Many trailing zeros are unlikely, so a large maximum implies many distinct elements; averaging across registers (harmonically, with bias correction) gives a cardinality estimate with ~0.81% standard error. Registers are 6 bits, so 16384 × 6 / 8 = 12 KB — the dense encoding.
+
+Redis adds two things the paper does not, and you must implement both:
+
+- **The sparse encoding.** For small cardinalities most registers are zero, so the string instead holds a run-length-ish opcode stream (`ZERO`, `XZERO`, `VAL`) that costs a few dozen bytes. It converts to dense when it exceeds `hll-sparse-max-bytes` (3000) or when a register value exceeds 32. One-way, like every other encoding conversion (§8.2).
+- **The cached cardinality.** The 16-byte header (`"HYLL"`, encoding byte, three reserved, 8-byte card) caches the last computed count with an invalidation bit in the MSB, because `PFCOUNT` is expensive and overwhelmingly repeated. `PFADD` that changes nothing must not invalidate it — that's also why `PFADD` returns 0/1 meaningfully.
+
+`PFCOUNT` on multiple keys merges on the fly without storing; `PFMERGE` writes the register-wise maximum into a destination. `PFDEBUG` and `PFSELFTEST` exist for the test suite — implement `PFDEBUG GETREG` at minimum, because the real Redis stream of tests uses it.
+
+## 43.3 Geospatial: a zset in disguise
+
+§15.9 has the mechanism; this is the command surface. `GEOADD key [NX|XX] [CH] lng lat member …` stores a 52-bit Morton-interleaved geohash as the zset score. `GEOPOS` decodes back to coordinates (lossy at the 26th subdivision — ~0.6 m — so the diff harness needs a tolerance rule, one of the few legitimate entries in the §6.4 allowlist). `GEODIST` is haversine between two decoded members with a unit argument. `GEOHASH` returns the *standard* 11-character base-32 geohash string, which is a **different encoding** from the internal score — build the conversion, it is a common trip-up.
+
+`GEOSEARCH key FROMMEMBER|FROMLONLAT BYRADIUS|BYBOX [ASC|DESC] [COUNT n [ANY]] [WITHCOORD] [WITHDIST] [WITHHASH]` is the modern query; `GEOSEARCHSTORE` writes results to a destination key (`STOREDIST` writes distances as scores instead of geohashes). The deprecated `GEORADIUS`/`GEORADIUSBYMEMBER` (+`_RO` variants) still ship in every client library, so build them as thin wrappers — and note their `STORE`/`STOREDIST` options make the non-`_RO` forms *write* commands, which matters for the ch. 7 flag table and for replica routing.
+
+## Self-check — Chapter 43
+
+1. Why does `SETBIT k 10000000 1` cost 1.25 MB? Which config is the only thing standing between that and an OOM?
+2. `BITFIELD k OVERFLOW SAT INCRBY i8 0 100 INCRBY i8 0 100` — what are the two return values, and why?
+3. What are the two HLL encodings, what triggers the conversion, and why is it one-way?
+4. Why is a HyperLogLog a plain string rather than its own type? Name two consequences.
+5. `GEOHASH` and the zset score are both geohashes. Why are they not the same bytes?
+6. Which two geo commands are writes despite sounding like reads, and what makes them so?
+
+---
+
+# Chapter 44 — Build: bitmaps, HyperLogLog, and geospatial
+
+> **Time:** 30 h · **Before you start:** Chapter 43.
+>
+> **You're done when:** A HyperLogLog written by DiceMe is counted correctly by real `redis-server` and vice versa, and `tests/ch44_*.txt` diff clean.
+
+## 44.1 Order of work
+
+1. **Bitmaps** (~8 h): `SETBIT`/`GETBIT` with raw-encoding forcing and zero-fill; `BITCOUNT`/`BITPOS` with both range units and negative indexes; `BITOP` including `NOT`'s single-source arity rule; then `BITFIELD`/`BITFIELD_RO` — write the operation parser first, the typed getter/setter second, the three overflow modes third, and property-test the typed accessors against a `math/big` model at every width from 1 to 64.
+2. **HyperLogLog** (~14 h): the header, the dense encoding, the sparse encoding and its opcodes, the promotion rule, the cached-cardinality invalidation bit, `hllCount`'s estimator (implement the modern bias-corrected/loglog-beta form Redis uses, not the raw 2007 estimator — they disagree at low cardinality and the harness will show it), `PFADD`/`PFCOUNT`/`PFMERGE`/`PFDEBUG`/`PFSELFTEST`. Use **exactly Redis's hash** (its 64-bit MurmurHash variant) or the blobs will not interoperate.
+3. **Geospatial** (~8 h): `geohashEncode`/`Decode`, the 9-neighbour computation, the score-range derivation per cell, haversine, then the command surface of §43.3 on top of your existing zset.
+
+## 44.2 Done-when
+
+```bash
+tests/harness/diff.sh tests/ch44_bitops.txt      # SETBIT/GETBIT/BITCOUNT/BITPOS/BITOP/BITFIELD matrices
+tests/harness/diff.sh tests/ch44_hll.txt         # PFADD/PFCOUNT/PFMERGE, sparse and dense
+tests/harness/diff.sh tests/ch44_geo.txt         # with the documented coordinate tolerance rule only
+# interop, the real acceptance test:
+#   PFADD on dice → DUMP → RESTORE into real redis-server → PFCOUNT matches within 0
+#   PFADD on real redis → same round trip into dice → PFCOUNT matches within 0
+# accuracy: 1M distinct elements → PFCOUNT within 1% of truth; 100 elements → exact (sparse)
+# BITFIELD property test: 100k random typed ops vs a big.Int model, all widths, all overflow modes
+# GEOSEARCH: 10k points, BYRADIUS and BYBOX results identical to real redis (sorted, with tolerance)
+```
+
+## 44.3 Traps
+
+- A different hash function makes your HLLs numerically plausible and completely non-interoperable. Port Redis's hash byte-for-byte and test the round trip *before* building the sparse encoding.
+- `BITCOUNT k 0 0` counts the first **byte** by default but the first **bit** with `BIT`. Two characters, two different answers.
+- `BITFIELD`'s `#` offsets multiply by the type width; mixing `#` and raw offsets in one command is legal.
+- Geo distance comparisons at cell edges: the 9-cell block over-approximates, so *always* filter by exact haversine. Skipping the filter passes casual tests and fails at boundaries.
+
+---
+
+# Chapter 45 — Build: Sentinel
+
+> Chapter 37 is the spec.
+>
+> **Time:** 25 h · **Before you start:** Chapters 37 and 33 (pub/sub) and a working chapter 30.
+>
+> **You're done when:** Three `dice-sentinel` processes detect a killed master, elect a leader, promote the freshest replica, reconfigure the others, and a client that only knows the sentinels keeps working across the failover.
+
+**Goal**: a second binary, `dice-sentinel`, implementing the §37 protocol — and interoperating with real `redis-sentinel` where the protocol is observable.
+
+## 45.1 Order of work
+
+1. **Monitoring**: config (`sentinel monitor <name> <ip> <port> <quorum>`, `down-after-milliseconds`, `failover-timeout`, `parallel-syncs`), a connection per monitored instance, periodic `PING`/`INFO`, and the instance table (masters, their replicas discovered from `INFO replication`, other sentinels).
+2. **Discovery**: publish to `__sentinel__:hello` on the monitored master every 2 s and subscribe to it — this is where chapter 33's pub/sub earns a second keep. Zero config beyond the master address.
+3. **SDOWN → ODOWN**: per-sentinel timeout marking, then `SENTINEL is-master-down-by-addr` asking peers, quorum counting.
+4. **Leader election**: `is-master-down-by-addr` doubles as the vote request (it carries a run-id and epoch); majority of *all known sentinels*, one vote per epoch, first-come-first-served.
+5. **Failover state machine**: select target (exclude down/disconnected, then `replica-priority`, then highest replication offset, then lexicographic run-id) → `REPLICAOF NO ONE` → poll `INFO` until it reports master → `REPLICAOF <new>` to the others in batches of `parallel-syncs` → bump config epoch → announce via hello.
+6. **The client side**: `SENTINEL get-master-addr-by-name`, `SENTINEL masters|replicas|sentinels|ckquorum|failover|reset`, and the ~50-line Go client that resolves the master through a sentinel and reconnects on `-READONLY`.
+
+## 45.2 Done-when
+
+```bash
+tests/ch45_sentinel.sh up      # 1 master, 2 replicas, 3 sentinels
+kill -9 <master>               # within down-after + failover time: a replica is master, others follow it
+                               # the Go client's writes resume without restart
+# split the sentinels 1|2: the lone sentinel sees ODOWN but never acts (no majority) — assert no promotion
+# old master returns: receives REPLICAOF from a higher-epoch sentinel, demotes, full-resyncs
+# interop: run one real redis-sentinel alongside two dice-sentinels against a dice master —
+#   they discover each other over __sentinel__:hello and agree (this is the honest compatibility check)
+```
+
+## 45.3 Traps
+
+- Detection uses *quorum*, acting uses *majority*. Two different numbers; conflating them lets a minority partition promote (§37.3).
+- The promotion target must be re-validated *after* the election — the freshest replica at vote time may be down by execution time.
+- `failover-timeout` governs retry and the refusal to start a second failover for the same master too soon; without it a flapping master produces a promotion storm.
+
+---
+
+# Chapter 46 — Security: AUTH, ACLs, and TLS
+
+> **Time:** 2 h · **Before you start:** Chapter 45.
+>
+> **You're done when:** You can state what `+@all -@dangerous ~cache:* &news.*` grants, and where in the dispatch path each half of it is checked.
+>
+> ### 📚 Required reading
+> | Read this | Time |
+> |---|---|
+> | Redis docs: "ACL" (`redis.io/docs/latest/operate/oss_and_stack/management/security/acl/`) and "Security" | 45 min |
+> | `acl.c`: `ACLCheckAllPerm`, `ACLSetUser`, `ACLGetCommandPerm`, the category table; `commands/*.json` `acl_categories` fields | 45 min |
+> | Redis docs: "TLS" (`redis.io/docs/latest/operate/oss_and_stack/management/security/encryption/`) | 20 min |
+
+## 46.1 The pre-ACL world, still supported
+
+`requirepass <pw>` plus `AUTH <pw>`, which in 6.0+ is *defined as* setting the password of the special `default` user. `protected-mode yes` (the default) refuses connections from non-loopback addresses when there is no password and no bind directive — the single change that ended a decade of unauthenticated Redis instances on the public internet. Unauthenticated clients get `-NOAUTH Authentication required.` on everything except `AUTH`, `HELLO`, `QUIT`, and `RESET`.
+
+## 46.2 ACLs
+
+A user is a set of rules applied in order, and every rule is one of four kinds:
+
+- **Command rules**: `+@all`, `-@admin`, `+get`, `-set`, `+config|get` (subcommand granularity), `allcommands`/`nocommands`. Categories (`@read`, `@write`, `@keyspace`, `@admin`, `@dangerous`, `@fast`, `@slow`, `@pubsub`, `@scripting`, `@transaction`, …) come from each command's metadata — the command table you have been carrying since chapter 7 grows one more field.
+- **Key patterns**: `~cache:*` (read and write), `%R~x:*` (read-only), `%W~y:*` (write-only), `allkeys`. Checked against the command's declared key positions, which is exactly why `COMMAND GETKEYS` (ch. 11) and the scripting key declaration (§39.2) exist.
+- **Channel patterns**: `&news.*`, `allchannels` — checked by `SUBSCRIBE`/`PSUBSCRIBE`/`PUBLISH`.
+- **Passwords and state**: `>password`, `<password`, `#<sha256hex>`, `nopass`, `on`/`off`, `reset`.
+
+**Selectors** (7.0) let one user carry several independent permission sets: `(+get ~app1:*)` grants `GET` on `app1:*` in addition to the base rules — the fix for "this service needs read on X and write on Y" without two connections.
+
+Surface: `ACL SETUSER|GETUSER|DELUSER|LIST|USERS|CAT|WHOAMI|GENPASS|LOG [RESET]|LOAD|SAVE|HELP`, plus `AUTH <user> <pass>` and `HELLO <ver> AUTH <user> <pass>`. Rules live either in the config file or in a separate `aclfile` (mutually exclusive; `ACL LOAD`/`SAVE` require the file). `ACL LOG` is the audit trail — every denial, with reason (`command`, `key`, `channel`, `auth`), and it is the first thing an operator asks for.
+
+Error texts, byte-exact, because clients match them: `-NOPERM User <u> has no permissions to run the '<cmd>' command`, `-NOPERM No permissions to access a key`, `-NOPERM No permissions to access a channel`, `-WRONGPASS invalid username-password pair or user is disabled.`
+
+## 46.3 TLS
+
+`tls-port` (usually with `port 0`), `tls-cert-file`, `tls-key-file`, `tls-ca-cert-file`, `tls-auth-clients yes|no|optional`, and the separate switches `tls-replication`, `tls-cluster` for intra-server links. In Go this is `crypto/tls` wrapping the listener and dialer, which is genuinely a small change — *if* your connection layer is `net.Conn`-shaped rather than raw file descriptors. It is, because chapter 7 made it so; this is the delayed reward for retiring the kqueue path.
+
+The reason it is required rather than a nice-to-have: every managed Redis and most corporate deployments mandate TLS, so a "replacement" that cannot speak it is not one.
+
+## 46.4 The rest of the protection surface
+
+`rename-command`-style command disabling (removing `FLUSHALL`, `DEBUG`, `KEYS` from the table by config); `CLIENT KILL` with its filter forms (`ID`, `ADDR`, `LADDR`, `TYPE`, `USER`, `SKIPME`, `MAXAGE`); `CLIENT PAUSE`/`UNPAUSE` (`WRITE`/`ALL` modes — under the engine model, simply stop dequeuing, and note it is also a failover primitive); `CLIENT NO-EVICT`/`NO-TOUCH`; never logging values.
+
+## Self-check — Chapter 46
+
+1. `AUTH <pw>` with no ACLs configured — what is actually happening under 6.0+ semantics?
+2. Which three things does `+@all -@dangerous ~cache:* &news.*` deny, and at which point in the dispatch gate sequence is each denied?
+3. Why does key-pattern checking depend on `COMMAND GETKEYS` working correctly? What breaks for a script?
+4. What does `protected-mode` do, and what class of incident did it end?
+5. Why are selectors more useful than creating a second user?
+
+---
+
+# Chapter 47 — Build: the security and admin surface
+
+> **Time:** 25 h · **Before you start:** Chapter 46.
+>
+> **You're done when:** `tests/ch47_acl.txt` diffs clean, a TLS client connects and replicates over TLS, and every command's ACL categories match real Redis's `COMMAND INFO` output.
+
+## 47.1 Order of work
+
+1. **Command metadata** (~4 h): add `ACLCategories` and key-spec information to the ch. 7 command table for every command you have built. Generate it from real Redis's `commands/*.json` rather than typing it — a small Go generator reading those files into your table is 100 lines and eliminates a whole class of divergence. This also completes `COMMAND INFO`/`COMMAND DOCS`/`COMMAND GETKEYS` from chapter 11.
+2. **Users and rules** (~10 h): the user struct, rule parsing (order matters — rules apply left to right), the four rule kinds, selectors, password hashing (SHA-256 hex), `default` user semantics, `requirepass` as an alias for setting it.
+3. **The dispatch gate** (~3 h): slot it into the ch. 7 gate sequence at the position real Redis uses (after arity, before cluster redirect): authenticated? → command allowed? → keys allowed? → channels allowed? Each failure has its own error text. Scripts and the AOF/replication fake clients bypass the gate (the master is authoritative; `CLIENT_MASTER` and replay flags skip it) — a subtle rule that, done wrong, makes replicas refuse their own master's writes.
+4. **`ACL` command surface + `ACL LOG`** (~4 h), `aclfile` load/save with atomic replacement (§21.2 — the third reuse).
+5. **TLS** (~2 h): `crypto/tls` on the listener, the replica dialer, and the cluster bus; the config keys of §46.3; a done-when that runs the whole chapter-30 replication drill over TLS.
+6. **Admin surface** (~2 h): `CLIENT KILL` filters, `CLIENT PAUSE`/`UNPAUSE`, `CLIENT NO-EVICT`/`NO-TOUCH`, `CLIENT INFO`, command disabling by config, `protected-mode`.
+
+## 47.2 Done-when
+
+```bash
+tests/harness/diff.sh tests/ch47_acl.txt    # SETUSER parsing, GETUSER output shape, NOPERM texts, ACL LOG entries
+redis-cli -p 7379 ACL SETUSER alice on '>pw' '~cache:*' +@read
+redis-cli -p 7379 --user alice --pass pw GET cache:x    # ok
+redis-cli -p 7379 --user alice --pass pw GET other      # NOPERM No permissions to access a key
+redis-cli -p 7379 --user alice --pass pw SET cache:x 1  # NOPERM ... 'set' command
+# categories match the oracle: for every command, COMMAND INFO's ACL categories == real redis's
+# TLS: redis-cli --tls --cert ... connects; a TLS replica completes the ch.30 drill unchanged
+# protected-mode: non-loopback connection with no password is refused with the exact message
+# CLIENT PAUSE 3000 WRITE: reads continue, writes queue, everything drains after
+```
+
+## 47.3 Traps
+
+- Applying ACL rules as a set instead of an ordered list. `+@all -get +@read` and `+@all +@read -get` grant different things.
+- Forgetting to exempt the master link and the AOF loader from the gate — the failure looks like a replication bug, not a security bug, and costs an evening.
+- `ACL GETUSER`'s reply shape changed across versions; diff it against your reference `redis-server`, not the docs.
+
+---
+
+# Chapter 48 — Build: the compatibility sweep
+
+> The last chapter, and the one that turns "a Redis" into "*the* Redis".
+>
+> **Time:** 45 h · **Before you start:** Everything above.
+>
+> **You're done when:** Real client libraries' own test suites pass against DiceMe, and a documented majority of the real Redis TCL test suite passes unmodified.
+
+**Goal**: close every remaining gap between your command table and real Redis's, then prove it with somebody else's tests instead of your own.
+
+## 48.1 The remaining commands
+
+- **RESP3 completion**: push frames for pub/sub delivery (the serializer exists since ch. 7; subscribers in RESP3 are *not* restricted, so lift the RESP2 mode restriction per protocol version), `HELLO` full reply shape, and **client-side caching**: `CLIENT TRACKING ON|OFF [REDIRECT id] [PREFIX p …] [BCAST] [OPTIN] [OPTOUT] [NOLOOP]`, `CLIENT TRACKINGINFO`, `CLIENT CACHING`, and invalidation messages fired from — say it — the keyspace choke point (§8.3). ~12 h, and the last dividend that choke point pays.
+- **Hash field TTLs** (7.4): `HEXPIRE`/`HPEXPIRE`/`HEXPIREAT`/`HPEXPIREAT`/`HTTL`/`HPTTL`/`HEXPIRETIME`/`HPEXPIRETIME`/`HPERSIST`/`HGETEX`/`HGETDEL`. Per-field metadata plus a second expiry index — the chapter-9 contract one level down, including the replica rule (§9.4) and the propagation rule (§20.4: `HEXPIRE` propagates as `HPEXPIREAT`). ~10 h.
+- **`OBJECT REFCOUNT`**, **`MEMORY USAGE|STATS|DOCTOR|PURGE`**, **`LOLWUT`**, **`TIME`**, **`SUBSTR`**, **`MOVE`**, **`SWAPDB`**, **`WAITAOF`**, **`FAILOVER [TO host port] [ABORT] [TIMEOUT ms]`** (pause writes → wait for the target replica to catch up → swap roles: `WAIT` + `CLIENT PAUSE` + `PSYNC` composed, and a satisfying capstone), **`SLOWLOG GET|LEN|RESET|HELP`**, **`LATENCY HISTORY|RESET|LATEST|DOCTOR`**. ~8 h.
+- **The `DEBUG` surface the test suite depends on**: `OBJECT`, `SLEEP`, `SET-ACTIVE-EXPIRE`, `JMAP`, `QUICKLIST-PACKED-THRESHOLD`, `STRINGMATCH-LEN`, `LISTPACK`, `CHANGE-REPL-ID`, `RELOAD`, `LOADAOF`, `DIGEST`, `DIGEST-VALUE`, `OBJECT FREQ`. `DEBUG DIGEST`/`DIGEST-VALUE` must be *self-consistent* (the tests compare a master's digest to a replica's, never to a constant), so define it once and use it everywhere. ~5 h.
+- **`INFO` field parity**: `commandstats`, `latencystats`, `errorstats`, `keyspace`, `replication` in both roles, `persistence` with every `rdb_*`/`aof_*` field, `everything`/`all` sections. Prometheus exporters parse these by name; a missing field is a broken dashboard. ~4 h.
+
+## 48.2 The proof
+
+Your own tests prove what you thought to test. These prove what you did not.
+
+1. **The real Redis test suite.** `~/Code/Learning/redis/tests/` is TCL and points at a host/port. Run `tests/unit/type/*`, `tests/unit/{expire,keyspace,scan,scripting,pubsub,multi,bitops,hyperloglog,geo,acl,info}`, and `tests/integration/{replication*,aof*,rdb}` against DiceMe. You will not pass all of it — some tests reach into `DEBUG` internals that only make sense for C Redis. **Score it**: a `make compat` target that runs the suite and prints passed/failed/skipped per file, with every skip justified in one line in `COMPATIBILITY.md`. That file is the deliverable, and an honest 85% with reasons beats a claimed 100%.
+2. **Real client libraries.** Point `go-redis`, `redis-py`, `node-redis`, and `jedis`'s own integration suites at DiceMe. They exercise `HELLO`, `COMMAND DOCS`, RESP3 negotiation, connection-pool edge cases, and cluster slot discovery — the parts no hand-written test covers, and the parts a *replacement* is judged on.
+3. **The real tools.** `redis-cli` (including `--cluster`, `--bigkeys`, `--memkeys`, `--scan`, `--rdb`), `redis-benchmark`, `redis-check-rdb`, and `redis-check-aof` must all work against your server and your files.
+
+## 48.3 Done-when
+
+```bash
+make compat                      # runs the real TCL suite; prints the scoreboard; writes COMPATIBILITY.md
+# client libraries:
+#   go-redis, redis-py, node-redis integration suites green against :7379 (RESP2 and RESP3)
+redis-cli -p 7379 --bigkeys ; redis-cli -p 7379 --memkeys ; redis-cli -p 7379 --rdb /tmp/out.rdb
+redis-check-rdb /tmp/out.rdb     # valid
+redis-cli -3 -p 7379 HELLO 3     # full RESP3 map reply; then CLIENT TRACKING ON and watch invalidations
+# hash field TTLs: HEXPIRE h 1 FIELDS 1 f ; wait ; HGET h f → nil ; HLEN reflects it; replica agrees
+# FAILOVER: dice master + replica → FAILOVER → roles swap with zero lost acknowledged writes
+```
+
+## 48.4 What remains incompatible, deliberately
+
+Write this section into your README, because "complete replacement" is a claim that has to name its own edges:
+
+- **The modules ABI.** `MODULE LOAD` takes a compiled C shared object against Redis's internal ABI. A Go server cannot load one, and no amount of work changes that. Consequence: RedisJSON, RediSearch, RedisTimeSeries, RedisBloom and every third-party module are out of reach. If you need them, you need Redis. This is the one honest gap, and it is architectural rather than incomplete.
+- **The cluster bus wire format.** Chapter 36 builds the cluster protocol's *logic* over your own encoding, so a DiceMe cluster is complete and a *mixed* DiceMe/Redis cluster is not. Clients never speak the bus, so this does not affect a client-facing replacement — but say so explicitly rather than letting someone discover it. Byte-compatible `clusterMsg` is a well-defined ~20 h project if you ever need it.
+- **Internal-only `DEBUG` subcommands** that expose C data structures (`DEBUG SEGFAULT`, allocator internals, `DEBUG LISTPACK-ENTRIES`). Stub them with errors; note the skipped tests.
 
 ---
 
@@ -2659,6 +3023,16 @@ Pick à la carte; each is independent. Rough effort attached.
 | **slot** | 1/16384 of the cluster keyspace: CRC16(key) mod 16384. |
 | **WAIT** | Block until N replicas ack an offset — synchronous replication on demand, not consensus. |
 | **WATCH** | Optimistic lock: EXEC aborts (null) if a watched key was written (incl. expired/evicted) since WATCH. |
+| **ACL selector** | An extra, independent permission set attached to one user: `(+get ~app1:*)`. |
+| **consumer group** | Stream reader group with a shared cursor and a per-consumer pending list; the at-least-once delivery mechanism. |
+| **effects batch** | The MULTI/EXEC-wrapped set of writes a script or transaction propagates instead of itself. |
+| **HLL sparse/dense** | HyperLogLog's two register encodings: opcode-compressed for small cardinalities, 16384×6 bits (12 KB) after promotion. |
+| **LZF** | The compression codec inside RDB string encoding; without it you cannot read a default-configured real `dump.rdb`. |
+| **PEL** | Pending Entries List: stream entries delivered to a consumer group but not yet `XACK`ed, with owner, idle time and delivery count. |
+| **push frame** | RESP3's server-initiated message type (`>`): pub/sub delivery and cache invalidation, which RESP2 fakes with arrays. |
+| **rax** | Compressed radix tree; ordered index for stream IDs and tracking prefixes. |
+| **tombstone** | A deleted stream entry's slot, left in place so IDs never shift; why `XLEN` and `entries-added` diverge. |
+| **tracking (CSC)** | Client-side caching: the server remembers which keys a client read and pushes invalidations when they change. |
 | **ziplist cascade update** | The O(N²) re-encoding chain in listpack's predecessor; the reason listpack exists. |
 
 ---
@@ -2668,37 +3042,54 @@ Pick à la carte; each is independent. Rough effort attached.
 The contract for "done": every command listed, semantics diff-clean vs real Redis (modulo the documented nondeterminism allowlist).
 
 ### ch. 7
-`PING ECHO QUIT` · dispatch errors (unknown cmd, arity) · inline commands · `DEBUG SLEEP` · carried-over Phase-1 commands keep working
+`PING ECHO QUIT HELLO(2|3)` · RESP2 **and** RESP3 rendering of every reply shape · dispatch errors (unknown cmd, arity) · inline commands · `DEBUG SLEEP` · carried-over Phase-1 commands keep working
 
 ### ch. 11
 Strings: `SET(NX|XX|GET|EX|PX|EXAT|PXAT|KEEPTTL) SETNX SETEX PSETEX GETSET GET GETDEL GETEX APPEND STRLEN SETRANGE GETRANGE INCR DECR INCRBY DECRBY INCRBYFLOAT MSET MSETNX MGET`
 Keys: `DEL UNLINK EXISTS TYPE TOUCH COPY RENAME RENAMENX KEYS SCAN(MATCH|COUNT|TYPE) RANDOMKEY TTL PTTL EXPIRE PEXPIRE EXPIREAT PEXPIREAT(NX|XX|GT|LT) PERSIST EXPIRETIME PEXPIRETIME DBSIZE FLUSHDB FLUSHALL SELECT`
-Server: `COMMAND(COUNT) CONFIG(GET|SET|RESETSTAT) INFO TIME CLIENT(ID|GETNAME|SETNAME|LIST) OBJECT(ENCODING|IDLETIME|FREQ|HELP) DEBUG(OBJECT|SLEEP|SET-ACTIVE-EXPIRE) HELLO(2)` · legacy alias `SUBSTR`(=GETRANGE)
+Keys, continued: `MOVE SWAPDB EXPIRETIME PEXPIRETIME` · `SELECT` across all 16 databases
+Server: `COMMAND(|COUNT|INFO|DOCS|LIST|GETKEYS) CONFIG(GET|SET|RESETSTAT) INFO(+commandstats|errorstats|latencystats) TIME CLIENT(ID|GETNAME|SETNAME|LIST|INFO) OBJECT(ENCODING|IDLETIME|FREQ|HELP) DEBUG(OBJECT|SLEEP|SET-ACTIVE-EXPIRE|JMAP|STRINGMATCH-LEN)` · legacy alias `SUBSTR`(=GETRANGE)
 
 ### ch. 19
 Lists: `LPUSH RPUSH LPUSHX RPUSHX LPOP RPOP LMPOP LLEN LRANGE LINDEX LSET LINSERT LREM LTRIM LMOVE RPOPLPUSH LPOS`
 Hashes: `HSET HSETNX HGET HMGET HGETALL HDEL HLEN HEXISTS HKEYS HVALS HINCRBY HINCRBYFLOAT HSTRLEN HRANDFIELD HSCAN`
 Sets: `SADD SREM SISMEMBER SMISMEMBER SMEMBERS SCARD SPOP SRANDMEMBER SMOVE SINTER SINTERCARD SUNION SDIFF SINTERSTORE SUNIONSTORE SDIFFSTORE SSCAN`
-ZSets: `ZADD ZREM ZSCORE ZMSCORE ZCARD ZINCRBY ZRANK ZREVRANK ZRANGE ZRANGESTORE ZRANGEBYSCORE ZREVRANGEBYSCORE ZRANGEBYLEX ZREVRANGEBYLEX ZCOUNT ZLEXCOUNT ZPOPMIN ZPOPMAX ZMPOP ZRANDMEMBER ZREMRANGEBYRANK ZREMRANGEBYSCORE ZREMRANGEBYLEX ZSCAN` · optional: `LCS SORT SORT_RO ZUNION ZINTER ZDIFF ZUNIONSTORE ZINTERSTORE ZDIFFSTORE ZINTERCARD`
+ZSets: `ZADD ZREM ZSCORE ZMSCORE ZCARD ZINCRBY ZRANK ZREVRANK ZRANGE ZRANGESTORE ZRANGEBYSCORE ZREVRANGEBYSCORE ZRANGEBYLEX ZREVRANGEBYLEX ZCOUNT ZLEXCOUNT ZPOPMIN ZPOPMAX ZMPOP ZRANDMEMBER ZREMRANGEBYRANK ZREMRANGEBYSCORE ZREMRANGEBYLEX ZSCAN ZUNION ZINTER ZDIFF ZUNIONSTORE ZINTERSTORE ZDIFFSTORE ZINTERCARD`
+Cross-type: `SORT SORT_RO` (BY/GET pattern deref, ALPHA, LIMIT, STORE) · `LCS`
 Deprecated aliases clients still send (each is a one-liner over the modern form — add them or your diff harness fails on real client libraries): `HMSET` (=HSET), `BRPOPLPUSH` (=BLMOVE RIGHT LEFT), `RPOPLPUSH` (=LMOVE RIGHT LEFT), `SETNX`/`SETEX`/`PSETEX`/`GETSET`, `SUBSTR` (=GETRANGE), `ZRANGEBYSCORE`-family (=ZRANGE forms)
 
 ### ch. 23
-`SAVE BGSAVE BGREWRITEAOF LASTSAVE SHUTDOWN(NOSAVE|SAVE)` · `CONFIG SET appendfsync|save|appendonly` · `-LOADING` behavior · `DEBUG RELOAD`
+`SAVE BGSAVE BGREWRITEAOF LASTSAVE SHUTDOWN(NOSAVE|SAVE)` · `DUMP RESTORE(REPLACE|ABSTTL|IDLETIME|FREQ)` · `CONFIG SET appendfsync|save|appendonly|rdbcompression` · `-LOADING` behavior · `DEBUG RELOAD|LOADAOF` · LZF both directions · RDB interop with real `redis-server` both ways
 
 ### ch. 26
-`CONFIG SET maxmemory|maxmemory-policy|maxmemory-samples` · `-OOM` on writes under noeviction · `OBJECT FREQ` real under lfu · `INFO stats: evicted_keys` · `MEMORY USAGE` (approx) · `DEBUG RECOUNT-MEMORY` (yours)
+`CONFIG SET maxmemory|maxmemory-policy|maxmemory-samples|maxmemory-clients` · `-OOM` on writes under noeviction · `OBJECT FREQ` real under lfu · `INFO stats: evicted_keys, evicted_clients` · `MEMORY USAGE(SAMPLES)` · client eviction · `DEBUG RECOUNT-MEMORY` (yours)
 
 ### ch. 30
 `REPLICAOF/SLAVEOF(host port|NO ONE) PSYNC REPLCONF(listening-port|capa|ACK|GETACK) WAIT ROLE` · `-READONLY` · `INFO replication` complete both roles · `DEBUG DIGEST` (yours)
 
 ### ch. 33
-`MULTI EXEC DISCARD WATCH UNWATCH RESET` · `BLPOP BRPOP BLMOVE BLMPOP BZPOPMIN BZPOPMAX BZMPOP WAIT` · `SUBSCRIBE UNSUBSCRIBE PSUBSCRIBE PUNSUBSCRIBE PUBLISH PUBSUB(CHANNELS|NUMSUB|NUMPAT)` · `CONFIG SET notify-keyspace-events`
+`MULTI EXEC DISCARD WATCH UNWATCH RESET` · `BLPOP BRPOP BLMOVE BRPOPLPUSH BLMPOP BZPOPMIN BZPOPMAX BZMPOP WAIT` · `SUBSCRIBE UNSUBSCRIBE PSUBSCRIBE PUNSUBSCRIBE PUBLISH PUBSUB(CHANNELS|NUMSUB|NUMPAT)` in both RESP2 (restricted mode) and RESP3 (push frames) · `CONFIG SET notify-keyspace-events`
 
 ### ch. 36
-`CLUSTER(MYID|INFO|SHARDS|SLOTS|KEYSLOT|MEET|FORGET|RESET|BUMPEPOCH|SETSLOT|GETKEYSINSLOT|COUNTKEYSINSLOT|NODES|REPLICATE|FAILOVER)` · `MIGRATE DUMP RESTORE ASKING READONLY READWRITE` · `-MOVED -ASK -CROSSSLOT -TRYAGAIN` · stretch: `SSUBSCRIBE SUNSUBSCRIBE SPUBLISH PUBSUB(SHARDCHANNELS|SHARDNUMSUB)`
+`CLUSTER(MYID|INFO|SHARDS|SLOTS|KEYSLOT|MEET|FORGET|RESET|BUMPEPOCH|SETSLOT|GETKEYSINSLOT|COUNTKEYSINSLOT|NODES|LINKS|REPLICAS|REPLICATE|FAILOVER|SET-CONFIG-EPOCH|SLAVES)` · `MIGRATE ASKING READONLY READWRITE` · `-MOVED -ASK -CROSSSLOT -TRYAGAIN -CLUSTERDOWN` · `SSUBSCRIBE SUNSUBSCRIBE SPUBLISH PUBSUB(SHARDCHANNELS|SHARDNUMSUB)`
 
-### ch. 39 (menu-dependent)
-`GEOADD GEOPOS GEODIST GEOHASH GEOSEARCH GEOSEARCHSTORE` · `XADD XRANGE XREVRANGE XLEN XREAD XTRIM XDEL XSETID XGROUP XREADGROUP XACK XPENDING XCLAIM XAUTOCLAIM XINFO` · `HEXPIRE HPEXPIRE HEXPIREAT HPEXPIREAT HTTL HPTTL HEXPIRETIME HPEXPIRETIME HPERSIST HGETEX HGETDEL` · `SORT SORT_RO LCS` · `EVAL EVAL_RO EVALSHA EVALSHA_RO SCRIPT(LOAD|EXISTS|FLUSH|KILL) FUNCTION(LOAD|LIST|DUMP|DELETE|STATS) FCALL FCALL_RO` · `HELLO 3` + push · `CLIENT(TRACKING|KILL|PAUSE|UNPAUSE|NO-EVICT|NO-TOUCH)` · `AUTH ACL(...)` · `SLOWLOG(GET|LEN|RESET) LATENCY(HISTORY|RESET|LATEST)` · `SETBIT GETBIT BITCOUNT BITOP BITPOS BITFIELD BITFIELD_RO` · `PFADD PFCOUNT PFMERGE` · `WAITAOF FAILOVER` · `TIME MOVE SWAPDB LOLWUT OBJECT(REFCOUNT) MEMORY(USAGE|STATS|DOCTOR)` · `SENTINEL(...)` in dice-sentinel
+### ch. 40
+`EVAL EVAL_RO EVALSHA EVALSHA_RO` · `SCRIPT(LOAD|EXISTS|FLUSH|KILL)` · `FUNCTION(LOAD|LIST|DELETE|FLUSH|DUMP|RESTORE|STATS|KILL) FCALL FCALL_RO` · `-NOSCRIPT -BUSY -UNKILLABLE` · effects propagation wrapped in MULTI/EXEC
+
+### ch. 42
+`XADD XLEN XRANGE XREVRANGE XDEL XTRIM XSETID XREAD(BLOCK)` · `XGROUP(CREATE|CREATECONSUMER|DELCONSUMER|DESTROY|SETID) XREADGROUP XACK XPENDING XCLAIM XAUTOCLAIM XINFO(STREAM|STREAM FULL|GROUPS|CONSUMERS)` · stream RDB carriage including groups and PELs
+
+### ch. 44
+`SETBIT GETBIT BITCOUNT BITPOS BITOP BITFIELD BITFIELD_RO` · `PFADD PFCOUNT PFMERGE PFDEBUG PFSELFTEST` · `GEOADD GEOPOS GEODIST GEOHASH GEOSEARCH GEOSEARCHSTORE GEORADIUS GEORADIUS_RO GEORADIUSBYMEMBER GEORADIUSBYMEMBER_RO`
+
+### ch. 45
+`SENTINEL(masters|master|replicas|sentinels|get-master-addr-by-name|is-master-down-by-addr|reset|failover|ckquorum|monitor|remove|set|flushconfig)` in the `dice-sentinel` binary · `__sentinel__:hello` discovery
+
+### ch. 47
+`AUTH(pass|user pass) HELLO(AUTH)` · `ACL(SETUSER|GETUSER|DELUSER|LIST|USERS|CAT|WHOAMI|GENPASS|LOG|LOAD|SAVE|HELP)` · `-NOAUTH -NOPERM -WRONGPASS` · TLS listener, replica dialer and cluster bus · `CLIENT(KILL|PAUSE|UNPAUSE|NO-EVICT|NO-TOUCH)` · `protected-mode`, command disabling
+
+### ch. 48
+`CLIENT(TRACKING|TRACKINGINFO|CACHING)` + RESP3 invalidation push · `HEXPIRE HPEXPIRE HEXPIREAT HPEXPIREAT HTTL HPTTL HEXPIRETIME HPEXPIRETIME HPERSIST HGETEX HGETDEL` · `OBJECT REFCOUNT MEMORY(USAGE|STATS|DOCTOR|PURGE) LOLWUT SUBSTR WAITAOF FAILOVER` · `SLOWLOG(GET|LEN|RESET|HELP) LATENCY(HISTORY|RESET|LATEST|DOCTOR)` · `DEBUG(JMAP|QUICKLIST-PACKED-THRESHOLD|LISTPACK|CHANGE-REPL-ID|DIGEST|DIGEST-VALUE|LOADAOF)` · full `INFO` section parity
 
 ---
 
@@ -2758,6 +3149,16 @@ All in `~/Code/Learning/redis/src` @ `d22066d09`. Search by function name.
 | sharded pub/sub | `pubsub.c:spublishCommand`, `ssubscribeCommand` |
 | CRC | `crc16.c` (cluster slots), `crc64.c` (RDB) |
 | glob matching | `util.c:stringmatchlen` |
+| radix tree | `rax.c` (whole file; the header comment is the format spec) |
+| RDB compression | `lzf_c.c` / `lzf_d.c` (compress and decompress, ~250 lines together) |
+| DUMP / RESTORE | `cluster.c:dumpCommand`, `restoreCommand` (RDB value + version footer + CRC64) |
+| ACLs | `acl.c:ACLCheckAllPerm`, `ACLSetUser`, `ACLGetCommandPerm`, `ACLAddLogEntry`; categories in `commands/*.json` |
+| TLS | `tls.c` (the connection-type abstraction it plugs into is `connection.c`) |
+| RESP3 / protocol version | `networking.c:addReplyMap`, `addReplyPush`, `helloCommand` |
+| client tracking (CSC) | `tracking.c:trackingRememberKeys`, `trackingInvalidateKey` |
+| client eviction | `networking.c:evictClients`, `updateClientMemUsageAndBucket` |
+| command metadata | `commands/*.json` (arity, flags, key specs, ACL categories) → `commands.def` |
+| SLOWLOG / LATENCY | `slowlog.c`; `latency.c:latencyAddSample` |
 | protections | `config.c` (registry), `networking.c` (output buffer limits in `checkClientOutputBufferLimits`) |
 
 ---
@@ -2776,32 +3177,28 @@ Redis has less canonical literature than a consensus system does — much of its
 5. **[P] Pugh, "Skip Lists: A Probabilistic Alternative to Balanced Trees"** (CACM 1990) — `epaperpress.com/sortsearch/download/skiplist.pdf`. Ten pages, and you implement it in ch. 17.
 6. **[P] Aumasson & Bernstein, "SipHash: a fast short-input PRF"** (INDOCRYPT 2012) — `131002.net/siphash/siphash.pdf`. Why the keyspace hash is a keyed PRF and not something faster (ch. 15).
 
-## Tier 2 — the mechanism papers, each tied to one chapter
+## Tier 2 — the mechanism papers you implement
 
-7. **[P] Yang, Yue, Rashmi, "A large-scale analysis of hundreds of in-memory key-value cache clusters at Twitter"** (OSDI 2020) — `usenix.org/conference/osdi20/presentation/yang`. **The highest-value paper on this list for a cache builder.** Real workloads, and several findings that contradict folklore: TTL expiry removes more objects than eviction does, many workloads aren't Zipfian the way you were told, and FIFO is often within noise of LRU. Read before ch. 24.
-8. **[P] Yang, Yue, Rashmi, "Segcache"** (NSDI 2021) — `usenix.org/conference/nsdi21/presentation/yang-juncheng`. A cache built *around* TTLs with a time-indexed segment structure — the argument Redis 8's `ebuckets` rewrite is making. Read with ch. 9.
-9. **[P] Atikoglu et al., "Workload Analysis of a Large-Scale Key-Value Store"** (SIGMETRICS 2012) — `cs.cmu.edu/~dga/papers/memcachier-sigmetrics2012.pdf`. Facebook's memcached traces: tiny values, huge read skew, short TTLs. The workload every design choice in this book is answering. Read with ch. 1.
-10. **[P] Nishtala et al., "Scaling Memcache at Facebook"** (NSDI 2013) — `usenix.org/system/files/conference/nsdi13/nsdi13-final170_update.pdf`. The operations paper: thundering herds, stale sets, cold-cache warmup. Pairs with ch. 38.
-11. **[P] Pillai et al., "All File Systems Are Not Created Equal"** (OSDI 2014) — `usenix.org/system/files/conference/osdi14/osdi14-paper-pillai.pdf`. Which crash-atomicity properties you may actually assume. Read with ch. 21.
-12. **[P] Rebello et al., "Can Applications Recover from fsync Failures?"** (USENIX ATC 2020) — `usenix.org/conference/atc20/presentation/rebello`. A failed fsync can mark pages clean, so the retry lies to you. Read with ch. 21, then the PostgreSQL fsyncgate thread at `wiki.postgresql.org/wiki/Fsync_Errors`.
-13. **[P] Rosenblum & Ousterhout, "The Design and Implementation of a Log-Structured File System"** (SOSP 1991) — `web.stanford.edu/~ouster/cgi-bin/papers/lfs.pdf`. Your AOF is a log-structured store and `BGREWRITEAOF` is segment cleaning. Read with ch. 20.
-14. **[P] Evans, "A Scalable Concurrent malloc(3) Implementation for FreeBSD"** (BSDCan 2006) — `people.freebsd.org/~jasone/jemalloc/bsdcan2006/jemalloc.pdf`. jemalloc, which Redis links by default; size classes explain the `used_memory` vs `used_memory_rss` gap. Read with ch. 14.
-15. **[P] Flajolet, Fusy, Gandouet, Meunier, "HyperLogLog"** (AofA 2007) — `algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf`. Cardinality in 12 KB. Needed only if you take that ch. 39 menu row, but it is the prettiest algorithm in Redis.
-16. **[P] Morris, "Counting Large Numbers of Events in Small Registers"** (CACM 1978) — two pages; the ancestor of the LFU counter in ch. 24. Overview: `en.wikipedia.org/wiki/Approximate_counting_algorithm`.
-17. **[P] Megiddo & Modha, "ARC: A Self-Tuning, Low Overhead Replacement Cache"** (FAST 2003) and **[P] Einziger et al., "TinyLFU"** (`arxiv.org/abs/1512.00727`) — recency and frequency combined, and the sketch-based modern successor. Both are ch. 24 depth.
-18. **[P] Das, Gupta, Motivala, "SWIM"** (DSN 2002) — `cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf`. Cluster's PFAIL/FAIL gossip in its original form. Read with ch. 34.
-19. **[P] Karger et al., "Consistent Hashing and Random Trees"** (STOC 1997) — read it to answer *why Redis Cluster uses 16384 fixed slots instead*. Write your answer down; it's a good interview story.
-20. **Geohash and Z-order** — `en.wikipedia.org/wiki/Geohash`, `en.wikipedia.org/wiki/Z-order_curve`, and Morton's 1966 IBM report. The §15.9 mechanism.
+Each of these changes code you write. They are scheduled inside their chapters.
 
-## Tier 3 — placing Redis on the map
+7. **[P] Pillai et al., "All File Systems Are Not Created Equal"** (OSDI 2014) — `usenix.org/system/files/conference/osdi14/osdi14-paper-pillai.pdf`. Which crash-atomicity properties you may actually assume; it finds these bugs in SQLite, Git and PostgreSQL, so assume they are in yours. Read with ch. 21.
+8. **[P] Rebello et al., "Can Applications Recover from fsync Failures?"** (USENIX ATC 2020) — `usenix.org/conference/atc20/presentation/rebello`. A failed fsync can mark pages clean, so the retry lies to you. Read with ch. 21, then the PostgreSQL fsyncgate thread at `wiki.postgresql.org/wiki/Fsync_Errors`.
+9. **[P] Flajolet, Fusy, Gandouet, Meunier, "HyperLogLog"** (AofA 2007) — `algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf`. You implement it in ch. 44.
+10. **[P] Morris, "Counting Large Numbers of Events in Small Registers"** (CACM 1978) — two pages; the LFU counter in ch. 24 *is* this. Overview: `en.wikipedia.org/wiki/Approximate_counting_algorithm`.
+11. **[P] Das, Gupta, Motivala, "SWIM"** (DSN 2002) — `cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf`. Cluster's PFAIL/FAIL gossip in its original form; §3–4 are the protocol. Read with ch. 34.
+12. **Geohash and Z-order** — `en.wikipedia.org/wiki/Geohash`, `en.wikipedia.org/wiki/Z-order_curve`. The §15.9 mechanism you build in ch. 44.
 
-21. **Kleppmann, *Designing Data-Intensive Applications*** — ch. 5 (replication) after ch. 30, ch. 7 (transactions) after ch. 33, ch. 9 (consistency and consensus) to see what Redis declines to do. The best general framing anywhere.
-22. **[P] Ongaro & Ousterhout, "In Search of an Understandable Consensus Algorithm"** (2014) — `raft.github.io/raft.pdf`, its §5.1–5.4. Not because Redis uses Raft, but because it deliberately doesn't: this is the price of never losing an acknowledged write. Your ConsulMe project is the other side of this coin.
-23. **[P] DeCandia et al., "Dynamo"** (SOSP 2007) — `allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf`. The third answer to replication: sloppy quorums and reconciliation.
-24. **DragonflyDB architecture docs** (`github.com/dragonflydb/dragonfly/blob/main/docs`) — the §2.4 road not taken, argued well by the people who took it.
-25. **Valkey** (`github.com/valkey-io/valkey`) and **KeyDB** release notes — what the forks change first tells you where the pressure is.
-26. **"The C10K problem"**, Dan Kegel — `kegel.com/c10k.html`; and Beej's Guide — `beej.us/guide/bgnet` — if sockets ever feel fuzzy.
-27. **Redis University** — `university.redis.io`; RU301 (operations) is a good victory lap after ch. 38.
+## Tier 3 — background, none of it on the critical path
+
+Nothing here changes a line of your code. It is here so you know it exists; read it after ch. 48, or never, without guilt.
+
+13. **[P] Yang, Yue, Rashmi, "A large-scale analysis of hundreds of in-memory key-value cache clusters at Twitter"** (OSDI 2020) — real workloads, and several findings that contradict cache folklore. The most interesting paper on this list; it will not change what you build, only what you expect.
+14. **[P] Atikoglu et al., "Workload Analysis of a Large-Scale Key-Value Store"** (SIGMETRICS 2012) and **[P] Nishtala et al., "Scaling Memcache at Facebook"** (NSDI 2013) — the workload Redis's design answers, and the operations problems it does not.
+15. **[P] Evans, jemalloc** (BSDCan 2006) — why `used_memory` and `used_memory_rss` diverge.
+16. **[P] Rosenblum & Ousterhout, LFS** (SOSP 1991) — your AOF is a log-structured store and `BGREWRITEAOF` is segment cleaning.
+17. **[P] Megiddo & Modha, ARC** (FAST 2003) and **[P] Einziger et al., TinyLFU** — better eviction than Redis ships.
+18. **Kleppmann, *Designing Data-Intensive Applications***, ch. 5 and 9 — where Redis's replication sits on the consistency map. **[P] Ongaro & Ousterhout, Raft** — what an acknowledged write costs when you refuse to lose it.
+19. **Valkey**, **DragonflyDB**, **KeyDB** — the forks and the road not taken in §2.4.
 
 **Anti-list:** build-your-own-Redis tutorials. You are past them by ch. 11, and their shortcuts — no incremental parse, no encodings, no propagation discipline — are precisely the bugs the audit in the front matter is about.
 
@@ -2821,6 +3218,11 @@ All chapter self-checks collected, plus integration questions. Answer out loud, 
 8. `redis-cli -c` gets MOVED then ASK for the same key within a second. Reconstruct the cluster state that produces this.
 9. For each: acked-write loss possible? (a) everysec crash (b) always crash (c) master dies, replica promoted (d) WAIT 1 returned 1, then master dies (e) cluster minority partition heals. Justify each in one sentence.
 10. Rank by production frequency and explain: full-resync loop, output-buffer OOM, KEYS-in-prod stall, unbounded expiry backlog, split-brain write loss.
+11. A Lua script does `SPOP s` then `XADD st * member <result>`. Write out, byte for byte, what the replica receives — and name the two canonicalizations involved.
+12. A consumer reads 10 entries, dies, and is replaced. Name every structure that has to change for those 10 entries to be processed exactly once*ish*, and say precisely where the "ish" lives.
+13. A client sends `HELLO 3`, `SUBSCRIBE ch`, then `GET k`. What happens, and what would have happened under RESP2? Which chapter-7 decision made supporting both cheap?
+14. You load a `dump.rdb` produced by a real `redis-server` with default settings and it fails. List the five most likely causes in order, each traceable to one section of ch. 20 or 23.
+15. `+@all -@dangerous ~cache:* &news.*` — a client authenticated as this user sends `EVAL "return redis.call('GET', KEYS[1])" 1 other:k`. What happens, where, and why does the answer depend on `COMMAND GETKEYS`?
 
 ---
 
@@ -2845,6 +3247,12 @@ Classics of the genre — each with symptom → cause → the defense this book 
 | accounting drift | eviction thrashes early / OOM late | a mutation path missed its SizeOf delta | DEBUG RECOUNT-MEMORY invariant after every storm (§26.5) |
 | goroutine leak | RSS climbs across client churn | disconnect path missed a registry | pprof-count in done-whens since ch. 7 |
 | cron starvation | expiry/rehash never run under load | maintenance behind the request channel with no fairness | ticker case in select + budget per tick (§12.3) |
+| script's second propagation path | replica diverges only for keys a script touched | scripting built its own feed instead of reusing the effect stream | one producer, always (§40.3) |
+| `XADD *` propagated verbatim | replica's stream IDs differ from master's, forever | auto-generated ID not resolved before propagation | canonicalize in the effect (§42.3) |
+| PEL divergence | `XPENDING` differs master vs replica after a group workload | `XREADGROUP` delivery not propagated as `XCLAIM` | propagate group state changes (§42.1) |
+| HLL hash mismatch | your HLLs are self-consistent but real Redis counts them wrong | a different hash function than Redis's | port the hash first, test interop before anything else (§44.3) |
+| ACL rules applied as a set | a user has permissions their rule string denies | rule list evaluated unordered | ordered left-to-right application + diff `ACL GETUSER` (§47.3) |
+| master link hits the ACL gate | replica refuses its own master's writes; looks like a replication bug | `CLIENT_MASTER`/replay flags not exempted from the auth check | exempt at the gate, test with an ACL-enabled master (§47.3) |
 
 Grow this table. Every chaos-found bug earns a row *and* a regression test — the table is the project's scar tissue, and the most interview-valuable artifact in the repo after the README.
 
@@ -2912,12 +3320,11 @@ scripts/mergelogs.sh node*.log | less                        # ch. 28 cockpit
 
 ```bash
 # 1. Redis source — already at ~/Code/Learning/redis  (make -j8 once; you need the binaries)
-# 2. Papers directory — fetch these now, they're all free PDFs (Appendix D has the links):
-#      pugh-skiplists-1990.pdf        siphash-2012.pdf         twitter-cache-osdi20.pdf
-#      segcache-nsdi21.pdf            fb-workload-sigmetrics12.pdf
-#      pillai-fs-osdi14.pdf           fsync-failures-atc20.pdf lfs-sosp91.pdf
-#      jemalloc-bsdcan06.pdf          hyperloglog-flajolet07.pdf morris-counting-1978.pdf
-#      swim-dsn02.pdf                 arc-fast03.pdf           tinylfu-2015.pdf
+# 2. Papers directory — the six you implement from, all free PDFs (Appendix D has the links):
+#      pugh-skiplists-1990.pdf        siphash-2012.pdf
+#      pillai-fs-osdi14.pdf           fsync-failures-atc20.pdf
+#      hyperloglog-flajolet07.pdf     swim-dsn02.pdf
+#      (Appendix D tier 3 is background; fetch it later or not at all)
 # 3. Docs offline: redis.io/docs → the six spec pages (Appendix D tier 1) — save as PDF; you'll read each 2-3×
 # 4. Reference implementations to READ (never import):
 #    github.com/redis/redis (have it) · github.com/valkey-io/valkey (the fork, actively diverging)
@@ -2933,11 +3340,11 @@ scripts/mergelogs.sh node*.log | less                        # ch. 28 cockpit
 - **ch. 34**: the cluster spec page > the code for concepts; the code > the spec for gossip packet details.
 - **ch. 38**: real `redis.conf` (repo root) — read every comment once; it is the best-documented config file in open source and half of it is production wisdom in disguise.
 
-**The four papers to read even if you read nothing else**, in this order:
-1. **Pugh 1990** (skip lists) before ch. 17 — you implement it.
-2. **Yang et al., OSDI 2020** (Twitter cache analysis) before ch. 24 — it tells you which of your instincts about caching are wrong.
+**The four papers to read even if you read nothing else**, in this order — each one is code you write:
+1. **Pugh 1990** (skip lists) before ch. 17 — you implement it in `ds/skiplist`.
+2. **SipHash 2012** before ch. 17 — it decides what your dict hashes with, and why not something faster.
 3. **Pillai et al., OSDI 2014** (crash consistency) before ch. 23 — it tells you which of your instincts about files are wrong.
-4. **Kleppmann, DDIA ch. 5** after ch. 30 — it places what you just built on the map.
+4. **Flajolet et al. 2007** (HyperLogLog) before ch. 44 — you implement it, registers and all.
 
 ## Per build chapter — implementation references
 
@@ -2951,8 +3358,13 @@ scripts/mergelogs.sh node*.log | less                        # ch. 28 cockpit
 | **26** eviction | `redis.io/topics/lru-cache` · antirez's LRU-notes post · **Yang OSDI 2020**, **ARC**, **TinyLFU** · `tests/unit/maxmemory.tcl` · ch. 25 |
 | **30** replication | `redis.io/topics/replication` · `tests/integration/replication*.tcl` (especially `-psync`) · ch. 29 · **DDIA ch. 5**, then **Raft (paper §5.1–5.4)** and **Dynamo** for contrast |
 | **33** tx / blocking / pubsub | `redis.io/topics/{transactions,pubsub,notifications}` · `tests/unit/{multi,pubsub}.tcl` · ch. 32 |
-| **36** cluster | `redis.io/topics/cluster-spec` (the assignment) · **SWIM (DSN 2002)**, **Karger 1997** · `tests/unit/cluster/*.tcl` · ch. 35 · your ConsulMe gossip notes |
-| **39** stretch menu | per row: `redis.io/topics/streams-intro` · Flajolet 2007 · Geohash/Z-order wiki + `geohash_helper.c` · `redis.io/topics/{sentinel,latency,security}` |
+| **36** cluster | `redis.io/topics/cluster-spec` (the assignment) · **SWIM (DSN 2002)** · `tests/unit/cluster/*.tcl` · ch. 35 |
+| **40** scripting | `redis.io/docs/latest/develop/programmability/` · `script.c`, `script_lua.c`, `functions.c` · `tests/unit/scripting.tcl`, `tests/unit/functions.tcl` · ch. 39 |
+| **42** streams | `redis.io/docs/latest/develop/data-types/streams/` · `t_stream.c`, `rax.c` · `tests/unit/type/stream*.tcl` (three files, steal all of them) · ch. 41 |
+| **44** bitmaps/HLL/geo | `bitops.c`, `hyperloglog.c` header comment, `geohash_helper.c` · **Flajolet 2007** · `tests/unit/{bitops,bitfield,hyperloglog,geo}.tcl` · ch. 43 |
+| **45** Sentinel | `redis.io/topics/sentinel` · `sentinel.c` · `tests/sentinel/*` · ch. 37 |
+| **47** security | `redis.io/docs/latest/operate/oss_and_stack/management/security/` · `acl.c` + `commands/*.json` categories · `tests/unit/acl.tcl` · ch. 46 |
+| **48** compatibility | the whole real `tests/` tree · the client libraries' own integration suites · `redis-cli`/`redis-benchmark`/`redis-check-rdb`/`redis-check-aof` |
 
 ## The order, condensed (pin above your desk)
 
@@ -2964,7 +3376,8 @@ Part IV   14 15  16(src) 17(BUILD)  18(src) 19(BUILD)
 Part V    20 21  22(src) 23(BUILD)  24  25(src) 26(BUILD)
 Part VI   27 28  29(src) 30(BUILD)
 Part VII  31 32(src) 33(BUILD)  34  35(src) 36(BUILD)
-Part VIII 37 38  39(BUILD, a la carte)
+Part VIII 37 38
+Part IX   39 40(BUILD)  41 42(BUILD)  43 44(BUILD)  45(BUILD)  46 47(BUILD)  48(BUILD)
 ```
 
 That is the whole navigation system: read them in that order, top to bottom.
@@ -2973,14 +3386,10 @@ That is the whole navigation system: read them in that order, top to bottom.
 
 # Closing
 
-Two projects now sit side by side on your disk. ConsulMe taught you what it costs to *refuse* to lose data — quorums, fsync-before-vote, the wall that is Raft. DiceMe teaches what you can buy by *agreeing* to lose a little — a replication stream with no election safety, an eviction that guesses, an expiry that samples, a snapshot that forks. Same networks, same crashes, opposite bets. When you can argue both sides — when "why doesn't Redis just use Raft?" and "why doesn't Consul just use a backlog?" are both questions you answer with trade-offs instead of slogans — you have the thing interviews probe for and incidents demand: judgment about consistency, not vocabulary about it.
+You set out to write a Redis that a client cannot distinguish from Redis. Chapter 48 is the only chapter that can tell you whether you did, because it is the only one where somebody else's tests get a vote — the real TCL suite, four client libraries, and the four command-line tools that ship with the original.
 
-## Then what — after DiceMe
+What you will have when it passes: a single binary that speaks RESP2 and RESP3, holds all ten data types with their real encodings and conversion thresholds, expires and evicts by the real algorithms, survives `kill -9` at any point with a documented loss window, writes RDB files real Redis can read and reads the ones it writes, replicates with partial resync, shards across a cluster that fails over on its own, runs Lua and Functions with effects propagation, serves consumer groups, enforces ACLs over TLS — and one honest gap, the C modules ABI, written into your README because a claim of completeness is only worth what its exceptions admit.
 
-- **Valkey/Redis source contribution** — with this project done, the real codebase is legible end to end; the test suites you stole from are the on-ramp.
-- **The DragonflyDB question** — redo §2.4's decision the other way: shard the keyspace across cores with shared-nothing engines and see which chapter-7-through-13 semantics you must re-earn. That's a serious systems project with this book as its prerequisite.
-- **Streams + a real workload** — build a job queue on your own XADD/XREADGROUP and run it under chaos; consumer-group edge cases are a course in exactly-once mythology.
-- **Write the retrospective** — the audit table (before) vs the final architecture (after), benchmarks vs C Redis with the gaps explained, the bug catalogue. That document is the proof-of-work; the repo is just its evidence.
+Two projects then sit side by side on your disk. ConsulMe taught you what it costs to *refuse* to lose data — quorums, fsync-before-vote, the wall that is Raft. DiceMe taught you what you can buy by *agreeing* to lose a little: a replication stream with no election safety, an eviction that guesses, an expiry that samples, a snapshot that forks. Same networks, same crashes, opposite bets. When "why doesn't Redis just use Raft?" and "why doesn't Consul just use a backlog?" are both questions you answer with trade-offs instead of slogans, you have the thing incidents demand and interviews probe for: judgment about consistency rather than vocabulary about it.
 
-Build the checkpoint. Run the storm. Kill -9 it. Trust nothing you haven't crashed.
-
+Build the checkpoint. Run the storm. Kill -9 it. Trust nothing you haven't crashed — and nothing a client library hasn't tested.
